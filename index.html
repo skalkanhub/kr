@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Kripto Sinyal Asistanı v2</title>
+<style>
+  :root{
+    --bg:#0B1220; --card:#141E31; --card2:#1B2740; --line:#26334E;
+    --text:#E8EDF7; --muted:#8A97B1;
+    --buy:#2DD4A7; --sell:#F4586F; --wait:#F5B94B;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;padding:16px 14px 40px}
+  .wrap{max-width:520px;margin:0 auto}
+  header{margin-bottom:14px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:2.5px;color:var(--muted);text-transform:uppercase}
+  h1{font-size:24px;font-weight:800;margin-top:4px;letter-spacing:-.5px}
+  h1 span{color:var(--buy)}
+  .selectors{display:flex;gap:8px;margin:14px 0 12px}
+  input#coin{flex:1.4;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 12px;font-size:16px;font-weight:700;font-family:var(--mono);text-transform:uppercase;min-width:0}
+  input#coin::placeholder{color:var(--muted);font-weight:500;text-transform:none;font-family:inherit}
+  select{flex:1;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 8px;font-size:14px;font-weight:600;appearance:none;text-align:center;min-width:0}
+  button.go{background:var(--buy);color:#04211A;border:none;border-radius:12px;padding:12px 16px;font-size:15px;font-weight:800;cursor:pointer}
+  button.go:active{opacity:.8}
+  .quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .quick button{background:var(--card2);color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-size:12px;font-weight:700;font-family:var(--mono);cursor:pointer}
+  .price-row{display:flex;justify-content:space-between;align-items:baseline;margin:8px 2px;flex-wrap:wrap;gap:4px}
+  .price{font-family:var(--mono);font-size:24px;font-weight:700}
+  .change{font-family:var(--mono);font-size:14px;font-weight:700}
+  .up{color:var(--buy)} .down{color:var(--sell)}
+  .signal-card{border-radius:18px;padding:20px;text-align:center;margin:10px 0 14px;border:1px solid var(--line);background:var(--card)}
+  .signal-label{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;font-family:var(--mono)}
+  .signal{font-size:42px;font-weight:900;letter-spacing:1px;margin:6px 0 2px}
+  .sig-buy{color:var(--buy)} .sig-sell{color:var(--sell)} .sig-wait{color:var(--wait)}
+  .signal-sub{font-size:13px;color:var(--muted)}
+  .conf{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:12px}
+  .score-bar{height:8px;border-radius:99px;background:var(--card2);margin-top:6px;position:relative;overflow:hidden}
+  .score-fill{position:absolute;top:0;bottom:0;border-radius:99px;transition:all .5s}
+  .dq{display:inline-block;font-size:11px;font-weight:800;padding:3px 10px;border-radius:99px;margin-top:10px;font-family:var(--mono)}
+  canvas{width:100%;height:190px;background:var(--card);border:1px solid var(--line);border-radius:14px;display:block;margin-bottom:14px}
+  .ind{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+  .ind-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .ind-name{font-weight:700;font-size:15px}
+  .ind-val{font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .badge{font-size:11px;font-weight:800;padding:4px 10px;border-radius:99px;white-space:nowrap}
+  .b-buy{background:rgba(45,212,167,.15);color:var(--buy)}
+  .b-sell{background:rgba(244,88,111,.15);color:var(--sell)}
+  .b-wait{background:rgba(245,185,75,.15);color:var(--wait)}
+  .b-off{background:rgba(138,151,177,.12);color:var(--muted)}
+  .ind-desc{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5}
+  .status{text-align:center;color:var(--muted);padding:30px 10px;font-size:14px;line-height:1.6}
+  .disclaimer{margin-top:18px;font-size:12px;color:var(--muted);line-height:1.6;border-top:1px solid var(--line);padding-top:14px}
+  .updated{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center;margin-top:6px}
+  .lev-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .lev-grid label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:5px;font-weight:600}
+  .lev-grid input,.lev-grid select{background:var(--card2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px 10px;font-size:15px;font-family:var(--mono);width:100%;text-align:left;flex:none}
+  .lev-row{display:flex;justify-content:space-between;padding:10px 2px;border-bottom:1px solid var(--line);font-size:14px;gap:8px}
+  .lev-row:last-child{border-bottom:none}
+  .lev-row b{font-family:var(--mono);text-align:right}
+  .liq{background:rgba(244,88,111,.1);border:1px solid rgba(244,88,111,.35);border-radius:12px;padding:12px;margin-top:12px;font-size:13px;line-height:1.6}
+  .liq b{color:var(--sell);font-family:var(--mono)}
+  .warn{background:rgba(245,185,75,.08);border:1px solid rgba(245,185,75,.4);border-radius:12px;padding:12px;margin-top:12px;font-size:13px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Canlı Piyasa Verisi · 5 Kaynak</div>
+    <h1>Kripto Sinyal <span>Asistanı</span> v2</h1>
+  </header>
+
+  <div class="selectors">
+    <input id="coin" placeholder="Coin yaz: BTC, PEPE, CAP..." autocomplete="off" autocapitalize="characters">
+    <select id="interval">
+      <option value="15m">15 Dk</option>
+      <option value="1h">1 Saat</option>
+      <option value="4h" selected>4 Saat</option>
+      <option value="1d">1 Gün</option>
+    </select>
+    <button class="go" onclick="analiz()">Analiz</button>
+  </div>
+  <div class="quick">
+    <button onclick="hizli('BTC')">BTC</button><button onclick="hizli('ETH')">ETH</button>
+    <button onclick="hizli('SOL')">SOL</button><button onclick="hizli('XRP')">XRP</button>
+    <button onclick="hizli('DOGE')">DOGE</button><button onclick="hizli('CAP')">CAP</button>
+  </div>
+  <button class="go" style="width:100%;margin-bottom:12px;background:var(--card2);color:var(--text);border:1px solid var(--buy)" onclick="mtfAnaliz()">🕐 Çoklu Zaman Analizi (1s + 4s + 1g → tek karar)</button>
+
+  <div id="out"><div class="status">☝️ Coini yaz (veya hızlı butonlardan seç), zaman dilimini ayarla, <b>Analiz</b>'e bas.</div></div>
+
+  <div class="ind" id="levPanel" style="margin-top:16px">
+    <div class="ind-head"><div class="ind-name">⚡ Kaldıraç Hesaplayıcı</div><span class="badge b-wait">RİSKLİ</span></div>
+    <div class="ind-desc" style="margin-bottom:12px" id="levReco">Önce analiz yap — yön ve kaldıraç, algoritmanın kararına göre otomatik seçilecek.</div>
+    <div class="lev-grid">
+      <label>Yatırım (Teminat) $<input type="number" id="levMargin" value="100" inputmode="decimal"></label>
+      <label>Giriş Fiyatı $<input type="number" id="levEntry" placeholder="Analizden gelir" inputmode="decimal"></label>
+      <label>Kaldıraç
+        <select id="levX">
+          <option value="2">2x</option><option value="3" selected>3x</option><option value="5">5x</option>
+          <option value="10">10x</option><option value="20">20x</option><option value="50">50x</option><option value="100">100x</option>
+        </select>
+      </label>
+      <label>Yön
+        <select id="levDir">
+          <option value="long">Long (Yükseliş)</option>
+          <option value="short">Short (Düşüş)</option>
+        </select>
+      </label>
+    </div>
+    <button class="go" style="width:100%;margin-top:12px" onclick="hesaplaKaldirac()">Hesapla</button>
+    <div id="levOut"></div>
+  </div>
+
+  <div class="disclaimer">
+    ⚠️ <b>Uyarı:</b> Bu araç eğitim amaçlıdır, yatırım tavsiyesi değildir. Göstergeler geçmiş fiyattan hesaplanır; ani haber, listeleme, balina hareketi gibi olayları göremez. Kripto ve özellikle kaldıraçlı işlemler çok risklidir; kaybetmeyi göze alamayacağınız parayla işlem yapmayın. Karar ve sorumluluk tamamen size aittir.
+  </div>
+</div>
+
+<script>
+/* ================= YARDIMCI ================= */
+function hizli(s){document.getElementById('coin').value=s;analiz();}
+function fetchTimeout(url,ms=7000){
+  return Promise.race([fetch(url),new Promise((_,rej)=>setTimeout(()=>rej(new Error('zaman aşımı')),ms))]);
+}
+const f=(n,d)=>n.toLocaleString('tr-TR',{maximumFractionDigits:d!==undefined?d:(Math.abs(n)<1?6:2)});
+
+/* ================= GÖSTERGE HESAPLARI ================= */
+function emaArr(src,n){
+  const out=new Array(src.length).fill(null);const k=2/(n+1);
+  if(src.length<n)return out;
+  let s=0;for(let i=0;i<n;i++)s+=src[i];
+  out[n-1]=s/n;
+  for(let i=n;i<src.length;i++)out[i]=src[i]*k+out[i-1]*(1-k);
+  return out;
+}
+function smaLast(src,n){
+  if(src.length<n)return null;
+  let s=0;for(let i=src.length-n;i<src.length;i++)s+=src[i];
+  return s/n;
+}
+function rsiArr(closes,n=14){ // Wilder yöntemi
+  const out=new Array(closes.length).fill(null);
+  if(closes.length<n+1)return out;
+  let g=0,l=0;
+  for(let i=1;i<=n;i++){const d=closes[i]-closes[i-1];if(d>0)g+=d;else l-=d;}
+  g/=n;l/=n;
+  out[n]=100-100/(1+g/(l||1e-9));
+  for(let i=n+1;i<closes.length;i++){
+    const d=closes[i]-closes[i-1];
+    g=(g*(n-1)+(d>0?d:0))/n;
+    l=(l*(n-1)+(d<0?-d:0))/n;
+    out[i]=100-100/(1+g/(l||1e-9));
+  }
+  return out;
+}
+function macdArr(closes){
+  const e12=emaArr(closes,12),e26=emaArr(closes,26);
+  const m=closes.map((_,i)=>(e12[i]!=null&&e26[i]!=null)?e12[i]-e26[i]:null);
+  const valid=m.filter(x=>x!=null);
+  const s9=emaArr(valid,9);
+  const off=m.findIndex(x=>x!=null);
+  const sig=m.map((_,i)=>(i-off>=0&&s9[i-off]!=null)?s9[i-off]:null);
+  const hist=m.map((x,i)=>(x!=null&&sig[i]!=null)?x-sig[i]:null);
+  return{m,sig,hist};
+}
+
+/* ================= VERİ KAYNAKLARI ================= */
+async function veriGetir(base,itv,errors){
+  // 1) BINANCE (3 sunucu)
+  for(const host of ['https://data-api.binance.vision','https://api1.binance.com','https://api.binance.com']){
+    try{
+      const r=await fetchTimeout(`${host}/api/v3/klines?symbol=${base}USDT&interval=${itv}&limit=300`);
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      if(!Array.isArray(d)||d.length<20)throw new Error('yetersiz veri');
+      return{c:d.map(k=>({o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]})),kaynak:'Binance',lbl:itv};
+    }catch(e){errors.push('Binance: '+e.message)}
+  }
+  // 2) CRYPTOCOMPARE
+  try{
+    let ep,agg='';
+    if(itv==='15m'){ep='histominute';agg='&aggregate=15'}
+    else if(itv==='1h'){ep='histohour'}
+    else if(itv==='4h'){ep='histohour';agg='&aggregate=4'}
+    else{ep='histoday'}
+    const r=await fetchTimeout(`https://min-api.cryptocompare.com/data/v2/${ep}?fsym=${base}&tsym=USD&limit=300${agg}`,8000);
+    const j=await r.json();
+    const d=j&&j.Data&&j.Data.Data;
+    if(!Array.isArray(d)||d.length<20||d.every(k=>k.close===0))throw new Error('yetersiz veri');
+    return{c:d.map(k=>({o:k.open,h:k.high,l:k.low,c:k.close,v:k.volumefrom})),kaynak:'CryptoCompare',lbl:itv};
+  }catch(e){errors.push('CryptoCompare: '+e.message)}
+  // 3) OKX
+  try{
+    const bar={'15m':'15m','1h':'1H','4h':'4H','1d':'1D'}[itv];
+    const r=await fetchTimeout(`https://www.okx.com/api/v5/market/candles?instId=${base}-USDT&bar=${bar}&limit=300`,8000);
+    const j=await r.json();
+    if(!j.data||j.data.length<20)throw new Error('yetersiz veri');
+    const d=j.data.reverse();
+    return{c:d.map(k=>({o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]})),kaynak:'OKX',lbl:itv};
+  }catch(e){errors.push('OKX: '+e.message)}
+  // 4) COINBASE
+  try{
+    const gran={'15m':900,'1h':3600,'4h':21600,'1d':86400}[itv];
+    const lbl={'15m':'15m','1h':'1h','4h':'6h','1d':'1d'}[itv];
+    const r=await fetchTimeout(`https://api.exchange.coinbase.com/products/${base}-USD/candles?granularity=${gran}`,8000);
+    let d=await r.json();
+    if(!Array.isArray(d)||d.length<20)throw new Error('yetersiz veri');
+    d=d.reverse();
+    return{c:d.map(k=>({o:k[3],h:k[2],l:k[1],c:k[4],v:k[5]})),kaynak:'Coinbase',lbl:lbl};
+  }catch(e){errors.push('Coinbase: '+e.message)}
+  // 5) COINGECKO (id'yi arayarak bulur — hacim vermez)
+  try{
+    const s=await fetchTimeout(`https://api.coingecko.com/api/v3/search?query=${base}`,8000);
+    const sj=await s.json();
+    const hit=(sj.coins||[]).find(c=>c.symbol&&c.symbol.toUpperCase()===base)||(sj.coins||[])[0];
+    if(!hit)throw new Error('coin bulunamadı');
+    const days=(itv==='15m'||itv==='1h')?1:30;
+    const lbl=days===1?'30m':'4h';
+    const r=await fetchTimeout(`https://api.coingecko.com/api/v3/coins/${hit.id}/ohlc?vs_currency=usd&days=${days}`,8000);
+    const d=await r.json();
+    if(!Array.isArray(d)||d.length<20)throw new Error('yetersiz veri');
+    return{c:d.map(k=>({o:k[1],h:k[2],l:k[3],c:k[4],v:null})),kaynak:'CoinGecko',lbl:lbl};
+  }catch(e){errors.push('CoinGecko: '+e.message)}
+  return null;
+}
+
+/* ================= ANA ANALİZ ================= */
+async function analiz(){
+  const raw=document.getElementById('coin').value.trim().toUpperCase().replace(/\s/g,'').replace(/(USDT|USD|TRY)$/,'');
+  const itv=document.getElementById('interval').value;
+  const out=document.getElementById('out');
+  if(!raw){out.innerHTML='<div class="status">Önce bir coin sembolü yaz (ör. BTC, CAP, PEPE).</div>';return;}
+  out.innerHTML=`<div class="status">${raw}/USDT verisi çekiliyor... ⏳</div>`;
+  const errors=[];
+  const res=await veriGetir(raw,itv,errors);
+  if(!res){
+    out.innerHTML=`<div class="status">❌ <b>${raw}</b> için 5 kaynağın hiçbirinden veri alınamadı.<br><br>
+    <small style="text-align:left;display:block"><b>Denenenler:</b><br>${errors.map(x=>'• '+x).join('<br>')}<br><br>
+    Sembolün yazımını kontrol et. Hepsi "zaman aşımı/Failed to fetch" ise dosyayı önizlemeyle değil <b>Chrome/Safari</b> ile açtığından emin ol.</small></div>`;
+    return;
+  }
+  hesaplaVeGoster(raw,res.lbl,res.c,res.kaynak);
+}
+
+function skorla(candles){
+  const closes=candles.map(k=>k.c);
+  const N=closes.length;
+  const last=closes[N-1],prev=closes[N-2];
+  const chg=(last-prev)/prev*100;
+  const rows=[];
+  let score=0,maxScore=0;
+
+  let dq,dqCls,dqNot;
+  if(N>=200){dq='TAM VERİ';dqCls='b-buy';dqNot='';}
+  else if(N>=60){dq='ORTA VERİ';dqCls='b-wait';dqNot='Uzun vadeli göstergeler için mum sayısı sınırlı.';}
+  else{dq='SINIRLI VERİ ⚠️';dqCls='b-sell';dqNot='Sadece '+N+' mum var (muhtemelen yeni coin). Sinyal güvenilirliği DÜŞÜK — yeni coinler teknik analize değil habere göre hareket eder.';}
+
+  const kisa=N<60;
+  const fastN=kisa?9:20, slowN=kisa?21:50;
+  const eF=emaArr(closes,fastN),eS=emaArr(closes,slowN);
+  const ef=eF[N-1],es=eS[N-1];
+  if(ef!=null&&es!=null){
+    maxScore+=2;
+    if(ef>es){score+=2;rows.push({n:`Trend (EMA${fastN}/${slowN})`,v:'▲',b:'b-buy',t:'AL YÖNLÜ',d:`Kısa vadeli ortalama uzun vadelinin ÜZERİNDE → trend yukarı.${kisa?' (Kısa veri: hızlı EMA kullanıldı.)':''}`});}
+    else{score-=2;rows.push({n:`Trend (EMA${fastN}/${slowN})`,v:'▼',b:'b-sell',t:'SAT YÖNLÜ',d:`Kısa vadeli ortalama uzun vadelinin ALTINDA → trend aşağı.${kisa?' (Kısa veri: hızlı EMA kullanıldı.)':''}`});}
+  }
+  if(ef!=null){
+    maxScore+=1;
+    if(last>ef){score+=1;rows.push({n:`Fiyat vs EMA${fastN}`,v:f(ef),b:'b-buy',t:'HAFİF AL',d:'Fiyat ortalamanın üzerinde tutunuyor.'});}
+    else{score-=1;rows.push({n:`Fiyat vs EMA${fastN}`,v:f(ef),b:'b-sell',t:'HAFİF SAT',d:'Fiyat ortalamanın altına sarkmış durumda.'});}
+  }
+  const s50=smaLast(closes,50),s200=smaLast(closes,200);
+  if(s50!=null&&s200!=null){
+    maxScore+=1;
+    if(s50>s200){score+=1;rows.push({n:'Uzun Vade (SMA50/200)',v:'Altın Kesişim',b:'b-buy',t:'AL YÖNLÜ',d:'SMA50 > SMA200 → büyük resim yukarı.'});}
+    else{score-=1;rows.push({n:'Uzun Vade (SMA50/200)',v:'Ölüm Kesişimi',b:'b-sell',t:'SAT YÖNLÜ',d:'SMA50 < SMA200 → büyük resim aşağı.'});}
+  }else{
+    rows.push({n:'Uzun Vade (SMA50/200)',v:'—',b:'b-off',t:'HESAPLANAMADI',d:'200 mumluk geçmiş yok, bu gösterge puanlamaya katılmadı.'});
+  }
+  const R=rsiArr(closes),rsi=R[N-1];
+  const trendYukari=(ef!=null&&es!=null)?ef>es:null;
+  if(rsi!=null){
+    maxScore+=2;
+    if(rsi<30){
+      if(trendYukari===true){score+=2;rows.push({n:'RSI (14)',v:rsi.toFixed(1),b:'b-buy',t:'AL YÖNLÜ',d:'Aşırı satım (<30) + trend YUKARI → sağlıklı geri çekilme, alım fırsatı profili.'});}
+      else{rows.push({n:'RSI (14)',v:rsi.toFixed(1),b:'b-wait',t:'NÖTR',d:'Aşırı satım ama trend de AŞAĞI → bu "düşen bıçak"tır; ucuz görünen daha da ucuzlayabilir. Tek başına alım nedeni sayılmadı.'});}
+    }
+    else if(rsi>70){
+      if(trendYukari===false){score-=2;rows.push({n:'RSI (14)',v:rsi.toFixed(1),b:'b-sell',t:'SAT YÖNLÜ',d:'Aşırı alım (>70) + trend AŞAĞI → tepki yükselişi bitiyor olabilir, satış profili.'});}
+      else{rows.push({n:'RSI (14)',v:rsi.toFixed(1),b:'b-wait',t:'NÖTR',d:'Aşırı alım ama trend YUKARI → güçlü trendlerde RSI tepede uzun süre kalabilir. Tek başına satış nedeni sayılmadı, sadece kâr-al disiplinine dikkat.'});}
+    }
+    else if(rsi>=50){score+=1;rows.push({n:'RSI (14)',v:rsi.toFixed(1),b:'b-buy',t:'HAFİF AL',d:'50 üzeri → alıcı momentumu önde.'});}
+    else{score-=1;rows.push({n:'RSI (14)',v:rsi.toFixed(1),b:'b-sell',t:'HAFİF SAT',d:'50 altı → satıcı momentumu önde.'});}
+  }
+  const {m,sig,hist}=macdArr(closes);
+  const mv=m[N-1],sv=sig[N-1],mp=m[N-2],sp=sig[N-2];
+  const h0=hist[N-1],h1=hist[N-2],h2=hist[N-3];
+  if(mv!=null&&sv!=null){
+    maxScore+=2;
+    let pts=0,txt='',bb='',tt='';
+    const crossUp=mp<=sp&&mv>sv, crossDn=mp>=sp&&mv<sv;
+    const yapisik=Math.abs(mv-sv)<last*0.0005; // çizgiler birbirine yapışıksa gürültüdür
+    if(yapisik&&!crossUp&&!crossDn){bb='b-wait';tt='NÖTR';txt='MACD ve sinyal çizgisi birbirine yapışık → piyasa kararsız, bu gösterge şu an yön vermiyor.';}
+    else if(crossUp){pts=2;bb='b-buy';tt='AL YÖNLÜ';txt='TAZE kesişim: MACD sinyali yukarı kesti → yeni yükseliş dalgası başlıyor olabilir.'}
+    else if(crossDn){pts=-2;bb='b-sell';tt='SAT YÖNLÜ';txt='TAZE kesişim: MACD sinyali aşağı kesti → yeni düşüş dalgası başlıyor olabilir.'}
+    else if(mv>sv){
+      pts=1;bb='b-buy';tt='HAFİF AL';txt='MACD sinyal çizgisinin üzerinde.';
+      if(h0!=null&&h1!=null&&h2!=null){
+        if(h0>h1&&h1>h2){pts=2;txt+=' Histogram BÜYÜYOR → momentum güçleniyor.';tt='AL YÖNLÜ';}
+        else if(h0<h1&&h1<h2){txt+=' Ama histogram küçülüyor → yükseliş yorgun olabilir.';}
+      }
+    }else{
+      pts=-1;bb='b-sell';tt='HAFİF SAT';txt='MACD sinyal çizgisinin altında.';
+      if(h0!=null&&h1!=null&&h2!=null){
+        if(h0<h1&&h1<h2){pts=-2;txt+=' Histogram derinleşiyor → düşüş güçleniyor.';tt='SAT YÖNLÜ';}
+        else if(h0>h1&&h1>h2){txt+=' Ama histogram toparlanıyor → düşüş zayıflıyor olabilir.';}
+      }
+    }
+    score+=pts;
+    rows.push({n:'MACD (12,26,9)',v:mv.toFixed(4),b:bb,t:tt,d:txt});
+  }
+  const vols=candles.map(k=>k.v).filter(v=>v!=null&&v>0);
+  if(vols.length>=21){
+    maxScore+=1;
+    const lastV=candles[N-1].v;
+    const avg20=candles.slice(N-21,N-1).reduce((a,k)=>a+k.v,0)/20;
+    const oran=lastV/avg20;
+    const yesil=candles[N-1].c>=candles[N-1].o;
+    if(oran>=1.5){
+      if(yesil){score+=1;rows.push({n:'Hacim Onayı',v:'x'+oran.toFixed(1),b:'b-buy',t:'AL YÖNLÜ',d:'Son mum ortalamanın '+oran.toFixed(1)+' katı hacimle YEŞİL → alıcılar gerçekten agresif, hareket teyitli.'});}
+      else{score-=1;rows.push({n:'Hacim Onayı',v:'x'+oran.toFixed(1),b:'b-sell',t:'SAT YÖNLÜ',d:'Son mum ortalamanın '+oran.toFixed(1)+' katı hacimle KIRMIZI → satıcılar agresif, düşüş teyitli.'});}
+    }else{
+      rows.push({n:'Hacim Onayı',v:'x'+oran.toFixed(1),b:'b-wait',t:'NÖTR',d:'Hacim sıradan → mevcut hareket güçlü katılım içermiyor, kırılımlara temkinli yaklaş.'});
+    }
+  }else{
+    rows.push({n:'Hacim Onayı',v:'—',b:'b-off',t:'VERİ YOK',d:'Bu kaynak hacim vermiyor, gösterge puanlamaya katılmadı.'});
+  }
+  const son14=candles.slice(-14);
+  const atrPct=son14.reduce((a,k)=>a+(k.h-k.l)/k.c,0)/son14.length*100;
+  const guven=Math.round(Math.abs(score)/maxScore*100);
+  const esik=Math.ceil(maxScore*0.4);
+  let sigTxt,cls,sub;
+  if(score>=esik){sigTxt='AL';cls='sig-buy';sub=`Göstergelerin çoğunluğu yükseliş yönünde uyumlu (eşik: ±${esik}).`;}
+  else if(score<=-esik){sigTxt='SAT';cls='sig-sell';sub=`Göstergelerin çoğunluğu düşüş yönünde uyumlu (eşik: ±${esik}).`;}
+  else{sigTxt='BEKLE';cls='sig-wait';sub='Göstergeler çelişiyor — net sinyal yok, işlem için uyum bekle.';}
+  return{N,last,chg,rows,score,maxScore,dq,dqCls,dqNot,atrPct,guven,esik,sigTxt,cls,sub,eF};
+}
+
+function sinyalUygula(sigTxt,guven,atrPct,N,last,score,maxScore){
+  let onerLev=0;
+  if(sigTxt!=='BEKLE'){
+    onerLev=guven>=70?5:guven>=50?3:2;
+    if(atrPct>3)onerLev=Math.max(2,Math.floor(onerLev/2));
+    if(N<60)onerLev=Math.min(onerLev,2);
+  }
+  window.SINYAL={sig:sigTxt,score,maxScore,atrPct,last,onerLev,guven,dataN:N};
+  document.getElementById('levEntry').value=last;
+  const dirSel=document.getElementById('levDir'),levSel=document.getElementById('levX'),reco=document.getElementById('levReco');
+  if(sigTxt==='AL'){dirSel.value='long';levSel.value=String(onerLev);
+    reco.innerHTML=`🤖 <b style="color:var(--buy)">Algoritma kararı: LONG</b> · Güven: %${guven} · Önerilen kaldıraç: <b>${onerLev}x</b> · Oynaklık: %${atrPct.toFixed(2)}/mum${N<60?' · <b style="color:var(--sell)">Yeni coin: max 2x!</b>':''}`;}
+  else if(sigTxt==='SAT'){dirSel.value='short';levSel.value=String(onerLev);
+    reco.innerHTML=`🤖 <b style="color:var(--sell)">Algoritma kararı: SHORT</b> · Güven: %${guven} · Önerilen kaldıraç: <b>${onerLev}x</b> · Oynaklık: %${atrPct.toFixed(2)}/mum${N<60?' · <b style="color:var(--sell)">Yeni coin: max 2x!</b>':''}`;}
+  else{reco.innerHTML=`🤖 <b style="color:var(--wait)">Algoritma kararı: İŞLEME GİRME</b> — skor ${score>0?'+':''}${score}/${maxScore} eşiğin altında. Kaldıraçlı işlem için net sinyal bekle.`;}
+  return onerLev;
+}
+
+function hesaplaVeGoster(sym,itv,candles,kaynak){
+  const S=skorla(candles);
+  sinyalUygula(S.sigTxt,S.guven,S.atrPct,S.N,S.last,S.score,S.maxScore);
+  const pct=Math.round(((S.score+S.maxScore)/(2*S.maxScore))*100);
+  const barColor=S.sigTxt==='AL'?'var(--buy)':S.sigTxt==='SAT'?'var(--sell)':'var(--wait)';
+  let html=`
+  <div class="price-row">
+    <div><b>${sym}/USDT</b> · ${itv}</div>
+    <div><span class="price">$${f(S.last)}</span>
+    <span class="change ${S.chg>=0?'up':'down'}">${S.chg>=0?'▲':'▼'} %${Math.abs(S.chg).toFixed(2)}</span></div>
+  </div>
+  <div class="signal-card">
+    <div class="signal-label">Genel Sinyal</div>
+    <div class="signal ${S.cls}">${S.sigTxt}</div>
+    <div class="signal-sub">${S.sub}</div>
+    <div class="conf"><span>Skor: ${S.score>0?'+':''}${S.score} / ±${S.maxScore}</span><span>Güven: %${S.guven}</span></div>
+    <div class="score-bar"><div class="score-fill" style="left:0;width:${pct}%;background:${barColor}"></div></div>
+    <div class="dq ${S.dqCls}">${S.dq} · ${S.N} mum</div>
+    ${S.dqNot?`<div class="signal-sub" style="margin-top:8px">${S.dqNot}</div>`:''}
+  </div>
+  <canvas id="chart" width="1000" height="380"></canvas>`;
+  S.rows.forEach(r=>{
+    html+=`<div class="ind"><div class="ind-head"><div><div class="ind-name">${r.n}</div><div class="ind-val">Değer: ${r.v}</div></div><span class="badge ${r.b}">${r.t}</span></div><div class="ind-desc">${r.d}</div></div>`;
+  });
+  html+=`<div class="updated">Son güncelleme: ${new Date().toLocaleTimeString('tr-TR')} · Kaynak: ${kaynak}</div>`;
+  document.getElementById('out').innerHTML=html;
+  cizim(candles.slice(-60),S.eF.slice(-60));
+}
+
+/* ================= ÇOKLU ZAMAN DİLİMİ ================= */
+async function mtfAnaliz(){
+  const raw=document.getElementById('coin').value.trim().toUpperCase().replace(/\s/g,'').replace(/(USDT|USD|TRY)$/,'');
+  const out=document.getElementById('out');
+  if(!raw){out.innerHTML='<div class="status">Önce bir coin sembolü yaz (ör. BTC, SOL).</div>';return;}
+  const dilimler=[
+    {itv:'1h', ad:'1 Saat',  w:1, rol:'Zamanlama (dalga)'},
+    {itv:'4h', ad:'4 Saat',  w:2, rol:'Ana trend (akıntı)'},
+    {itv:'1d', ad:'1 Gün',   w:3, rol:'Büyük resim (gelgit)'}
+  ];
+  const sonuc=[];const errors=[];let kaynaklar=new Set();
+  for(const d of dilimler){
+    out.innerHTML=`<div class="status">${raw} · ${d.ad} verisi çekiliyor... ⏳<br><small>(${sonuc.length+1}/3)</small></div>`;
+    const res=await veriGetir(raw,d.itv,errors);
+    if(res){const S=skorla(res.c);sonuc.push({...d,S,candles:res.c});kaynaklar.add(res.kaynak);}
+    else sonuc.push({...d,S:null});
+  }
+  const gecerli=sonuc.filter(x=>x.S);
+  if(gecerli.length===0){
+    out.innerHTML=`<div class="status">❌ <b>${raw}</b> için hiçbir zaman diliminde veri alınamadı.<br><small>${errors.slice(0,5).map(x=>'• '+x).join('<br>')}</small></div>`;
+    return;
+  }
+  // Ağırlıklı birleşik puan: her dilimin normalize skoru (-1..1) × ağırlığı
+  let toplamW=0,toplam=0;
+  gecerli.forEach(x=>{toplam+=(x.S.score/x.S.maxScore)*x.w;toplamW+=x.w;});
+  const T=toplam/toplamW; // -1..1
+  const alSay=gecerli.filter(x=>x.S.sigTxt==='AL').length;
+  const satSay=gecerli.filter(x=>x.S.sigTxt==='SAT').length;
+  let karar,cls,aciklama;
+  if(T>=0.35&&alSay>satSay){
+    karar=(alSay===gecerli.length&&T>=0.5)?'GÜÇLÜ AL':'AL';cls='sig-buy';
+    aciklama=alSay===gecerli.length?'Tüm zaman dilimleri aynı yönde — dalga, akıntı ve gelgit uyumlu. En güvenilir senaryo.':'Büyük dilimler yukarı yönlü; kısa dilim zamanlama için izlenebilir.';
+  }else if(T<=-0.35&&satSay>alSay){
+    karar=(satSay===gecerli.length&&T<=-0.5)?'GÜÇLÜ SAT':'SAT';cls='sig-sell';
+    aciklama=satSay===gecerli.length?'Tüm zaman dilimleri aşağı yönde uyumlu.':'Büyük dilimler aşağı yönlü.';
+  }else{
+    karar='BEKLE';cls='sig-wait';
+    aciklama='Zaman dilimleri çelişiyor — kısa vadeli dalga ile büyük trend aynı yönde değil. Kaldıraçlı işlem için uyum bekle.';
+  }
+  const guvenT=Math.round(Math.abs(T)*100);
+  // Kaldıraç: 3/3 uyum + güçlü → 5x, karar var ama kısmi uyum → 3x
+  const ana=gecerli.find(x=>x.itv==='4h')||gecerli[gecerli.length-1];
+  let onerLev=0;
+  if(karar!=='BEKLE'){
+    const tamUyum=(karar.includes('AL')?alSay:satSay)===gecerli.length;
+    onerLev=(tamUyum&&guvenT>=50)?5:3;
+    if(ana.S.atrPct>3)onerLev=Math.max(2,Math.floor(onerLev/2));
+    if(ana.S.N<60)onerLev=Math.min(onerLev,2);
+  }
+  const sigBasit=karar.includes('AL')?'AL':karar.includes('SAT')?'SAT':'BEKLE';
+  window.SINYAL={sig:sigBasit,score:Math.round(T*100)/100,maxScore:1,atrPct:ana.S.atrPct,last:ana.S.last,onerLev,guven:guvenT,dataN:ana.S.N};
+  document.getElementById('levEntry').value=ana.S.last;
+  const dirSel=document.getElementById('levDir'),levSel=document.getElementById('levX'),reco=document.getElementById('levReco');
+  if(sigBasit==='AL'){dirSel.value='long';levSel.value=String(onerLev);reco.innerHTML=`🤖 <b style="color:var(--buy)">Çoklu-zaman kararı: LONG (${karar})</b> · Güven: %${guvenT} · Önerilen kaldıraç: <b>${onerLev}x</b>`;}
+  else if(sigBasit==='SAT'){dirSel.value='short';levSel.value=String(onerLev);reco.innerHTML=`🤖 <b style="color:var(--sell)">Çoklu-zaman kararı: SHORT (${karar})</b> · Güven: %${guvenT} · Önerilen kaldıraç: <b>${onerLev}x</b>`;}
+  else{reco.innerHTML=`🤖 <b style="color:var(--wait)">Çoklu-zaman kararı: İŞLEME GİRME</b> — diller çelişiyor (birleşik puan ${T.toFixed(2)}).`;}
+
+  const pct=Math.round((T+1)/2*100);
+  const barColor=sigBasit==='AL'?'var(--buy)':sigBasit==='SAT'?'var(--sell)':'var(--wait)';
+  let html=`
+  <div class="price-row">
+    <div><b>${raw}/USDT</b> · Çoklu Zaman</div>
+    <div><span class="price">$${f(ana.S.last)}</span></div>
+  </div>
+  <div class="signal-card">
+    <div class="signal-label">Birleşik Karar (1g×3 + 4s×2 + 1s×1)</div>
+    <div class="signal ${cls}">${karar}</div>
+    <div class="signal-sub">${aciklama}</div>
+    <div class="conf"><span>Birleşik puan: ${T>=0?'+':''}${T.toFixed(2)}</span><span>Güven: %${guvenT}</span></div>
+    <div class="score-bar"><div class="score-fill" style="left:0;width:${pct}%;background:${barColor}"></div></div>
+  </div>`;
+  sonuc.forEach(x=>{
+    if(!x.S){html+=`<div class="ind"><div class="ind-head"><div><div class="ind-name">${x.ad} · ${x.rol}</div><div class="ind-val">Ağırlık: ×${x.w}</div></div><span class="badge b-off">VERİ YOK</span></div></div>`;return;}
+    const b=x.S.sigTxt==='AL'?'b-buy':x.S.sigTxt==='SAT'?'b-sell':'b-wait';
+    html+=`<div class="ind"><div class="ind-head"><div><div class="ind-name">${x.ad} · ${x.rol}</div><div class="ind-val">Skor: ${x.S.score>0?'+':''}${x.S.score}/±${x.S.maxScore} · Güven %${x.S.guven} · Ağırlık ×${x.w}</div></div><span class="badge ${b}">${x.S.sigTxt}</span></div></div>`;
+  });
+  html+=`<canvas id="chart" width="1000" height="380"></canvas>
+  <div class="updated">Son güncelleme: ${new Date().toLocaleTimeString('tr-TR')} · Kaynak: ${[...kaynaklar].join(', ')}</div>
+  <div class="ind-desc" style="margin-top:4px;text-align:center">Detaylı gösterge dökümü için tek dilim seçip normal Analiz'e bas.</div>`;
+  document.getElementById('out').innerHTML=html;
+  cizim(ana.candles.slice(-60),ana.S.eF.slice(-60));
+}
+
+/* ================= GRAFİK ================= */
+function cizim(c,ema){
+  const cv=document.getElementById('chart');if(!cv)return;
+  const ctx=cv.getContext('2d');const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  const hi=Math.max(...c.map(x=>x.h)),lo=Math.min(...c.map(x=>x.l));
+  const pad=14,y=v=>pad+(hi-v)/(hi-lo||1e-9)*(H-2*pad);
+  const cw=W/c.length;
+  c.forEach((k,i)=>{
+    const x=i*cw+cw/2, up=k.c>=k.o;
+    ctx.strokeStyle=ctx.fillStyle=up?'#2DD4A7':'#F4586F';
+    ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,y(k.h));ctx.lineTo(x,y(k.l));ctx.stroke();
+    const bw=Math.max(cw*0.55,2),top=y(Math.max(k.o,k.c)),bh=Math.max(Math.abs(y(k.o)-y(k.c)),1.5);
+    ctx.fillRect(x-bw/2,top,bw,bh);
+  });
+  // EMA çizgisi
+  ctx.strokeStyle='#F5B94B';ctx.lineWidth=2;ctx.beginPath();
+  let started=false;
+  ema.forEach((v,i)=>{
+    if(v==null)return;
+    const x=i*cw+cw/2;
+    if(!started){ctx.moveTo(x,y(v));started=true;}else ctx.lineTo(x,y(v));
+  });
+  ctx.stroke();
+}
+
+/* ================= KALDIRAÇ ================= */
+function hesaplaKaldirac(){
+  const margin=parseFloat(document.getElementById('levMargin').value);
+  const entry=parseFloat(document.getElementById('levEntry').value);
+  const lev=parseFloat(document.getElementById('levX').value);
+  const dir=document.getElementById('levDir').value;
+  const out=document.getElementById('levOut');
+  if(!margin||!entry||margin<=0||entry<=0){
+    out.innerHTML='<div class="ind-desc" style="margin-top:10px">Teminat ve giriş fiyatını doldur (önce analiz yaparsan fiyat otomatik gelir).</div>';
+    return;
+  }
+  const pozisyon=margin*lev, coinMiktar=pozisyon/entry;
+  const liq=dir==='long'?entry*(1-1/lev):entry*(1+1/lev);
+  const liqPct=(100/lev).toFixed(2);
+  const pnl1=margin*lev*0.01;
+  const S=window.SINYAL;
+  let uyari='';
+  if(!S){uyari=`<div class="warn">⚠️ Henüz analiz yapmadın — yön ve kaldıraç algoritmaya değil senin seçimine dayanıyor. Önce <b>Analiz</b>'e bas.</div>`;}
+  else if(S.sig==='BEKLE'){uyari=`<div class="warn">🛑 <b style="color:var(--wait)">Algoritma şu an İŞLEME GİRME diyor</b> (skor ${S.score>0?'+':''}${S.score}/${S.maxScore}, güven %${S.guven}). Kararsız piyasada kaldıraç yazı-turadır. Aşağıdaki hesap sadece bilgi amaçlıdır.</div>`;}
+  else if((S.sig==='AL'&&dir==='short')||(S.sig==='SAT'&&dir==='long')){uyari=`<div class="liq">⚠️ <b>Algoritmanın TERSİNE işlem seçtin!</b> Sinyal <b>${S.sig}</b> diyor ama sen ${dir==='long'?'Long':'Short'} seçtin. Trende karşı kaldıraç en riskli senaryodur.</div>`;}
+  else if(S.onerLev&&lev>S.onerLev){uyari=`<div class="warn">⚠️ Seçtiğin <b>${lev}x</b>, önerilen <b>${S.onerLev}x</b>'ten yüksek. Oynaklık %${S.atrPct.toFixed(2)}/mum iken bu kaldıraç tasfiye riskini ciddi artırır.</div>`;}
+  if(S&&S.dataN<60){uyari+=`<div class="liq">🆕 <b>Yeni coin uyarısı:</b> sadece ${S.dataN} mumluk geçmiş var. Bu coinlerde fiyat teknik analize değil haber/hype akışına göre hareket eder — sinyal ne derse desin kaldıraç burada kumardır.</div>`;}
+
+  let slTp='',borsa='';
+  if(S&&S.atrPct){
+    const atr=entry*S.atrPct/100;
+    const sl=dir==='long'?entry-1.5*atr:entry+1.5*atr;
+    const tp=dir==='long'?entry+3*atr:entry-3*atr;
+    const slLimit=dir==='long'?sl*0.999:sl*1.001; // tetik fiyatının hafif kötüsü: emir kesin dolsun
+    const slKayip=Math.min(coinMiktar*Math.abs(entry-sl),margin);
+    const tpKar=coinMiktar*Math.abs(tp-entry);
+    const slGuvenli=dir==='long'?sl>liq:sl<liq;
+    // Fiyat ondalık hassasiyeti (borsa formatına yakın)
+    const dec=entry>=10?2:entry>=1?3:entry>=0.01?5:8;
+    const fx=n=>n.toFixed(dec);
+    slTp=`
+    <div class="lev-row"><span>🎯 Kâr-Al (3×ATR)</span><b style="color:var(--buy)">$${f(tp)} → +$${f(tpKar,2)}</b></div>
+    <div class="lev-row"><span>🛡️ Zarar-Durdur (1.5×ATR)</span><b style="color:var(--sell)">$${f(sl)} → −$${f(slKayip,2)}</b></div>
+    <div class="lev-row"><span>Risk / Ödül</span><b>1 : 2</b></div>
+    ${!slGuvenli?`<div class="liq">☠️ <b>KRİTİK:</b> Stop-loss, tasfiye fiyatının GERİSİNDE — stop çalışamadan tasfiye olursun. Kaldıracı düşür!</div>`:''}`;
+    borsa=`
+    <div style="background:var(--card2);border:1px dashed var(--line);border-radius:12px;padding:12px;margin-top:12px">
+      <div style="font-weight:800;font-size:13px;margin-bottom:8px">📋 BORSAYA (TP/SL EKRANINA) YAZILACAKLAR</div>
+      <div class="lev-row"><span>TP Limit (USDT)</span><b style="color:var(--buy)">${fx(tp)}</b></div>
+      <div class="lev-row"><span>SL Trigger (USDT)</span><b style="color:var(--sell)">${fx(sl)}</b></div>
+      <div class="lev-row"><span>SL Limit (USDT)</span><b style="color:var(--sell)">${fx(slLimit)}</b></div>
+      <div class="lev-row"><span>Amount (coin)</span><b>${f(coinMiktar)} → kaydırıcıyı %100'e çek</b></div>
+      <div class="ind-desc" style="margin-top:6px">Not: Rakamları yazarken giriş fiyatını BORSADAKİ gerçek "Entry Price" ile birebir gir, sonra Hesapla'ya bas — bu kutu ona göre güncellenir. Borsa ondalığı reddederse en yakın kabul ettiği değere yuvarla. SL Limit'in Trigger'dan ${dir==='long'?'hafif DÜŞÜK':'hafif YÜKSEK'} olması bilinçlidir: sert harekette emrin dolmadan kaçmaması için.</div>
+    </div>`;
+  }
+
+  out.innerHTML=`
+  ${uyari}
+  <div style="margin-top:14px">
+    <div class="lev-row"><span>Yön</span><b style="color:${dir==='long'?'var(--buy)':'var(--sell)'}">${dir==='long'?'LONG ▲':'SHORT ▼'}${S&&S.sig!=='BEKLE'&&((S.sig==='AL'&&dir==='long')||(S.sig==='SAT'&&dir==='short'))?' (algoritma ile uyumlu ✓)':''}</b></div>
+    <div class="lev-row"><span>Pozisyon Büyüklüğü</span><b>$${f(pozisyon,2)}</b></div>
+    <div class="lev-row"><span>Kontrol Edilen Miktar</span><b>${f(coinMiktar)} coin</b></div>
+    <div class="lev-row"><span>%1 fiyat hareketi</span><b>±$${f(pnl1,2)}</b></div>
+    ${slTp}
+  </div>
+  ${borsa}
+  <div class="liq">
+    ☠️ <b>Tasfiye Fiyatı ≈ $${f(liq)}</b><br>
+    Fiyat ${dir==='long'?'düşüp':'yükselip'} bu seviyeye gelirse <u>${f(margin,2)} doların tamamı silinir</u>. Girişten sadece <b>%${liqPct}</b> uzakta.<br><br>
+    <small>Not: Gerçek borsalarda bakım teminatı ve fonlama ücretleri yüzünden tasfiye bir miktar daha erken gerçekleşir. Yatırım tavsiyesi değildir.</small>
+  </div>`;
+}
+</script>
+</body>
+</html>
