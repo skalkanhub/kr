@@ -1303,7 +1303,7 @@ const DEFAULT_PLAN = [{ key:'kahvalti', time:'08:00', pct:25 }, { key:'ara1', ti
 const toMin = t => { const a = String(t || '0:0').split(':').map(Number); return (a[0] || 0) * 60 + (a[1] || 0); };
 const nowMinutes = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 const EQUIP_LABEL = { barbell:'Halter', dumbbell:'Dumbbell', machine:'Makine', cable:'Kablo', bodyweight:'Vücut ağırlığı' };
-const DEFAULT_PROFILE = { name:'', sex:'e', age:40, height:178, weight:82, activity:2, goal:'maintain', style:'modern', split:'full', days:3, equip:'gym', kcalOverride:0, restSound:true, vibrate:true, mealAlert:true, mealPrefs:'', apiKey:'', apiModel:'claude-sonnet-5-5', apiModelQuick:'claude-haiku-5-5', musicUrl:'' };
+const DEFAULT_PROFILE = { name:'', sex:'e', age:40, height:178, weight:82, activity:2, goal:'maintain', style:'modern', split:'full', days:3, equip:'gym', kcalOverride:0, restSound:true, vibrate:true, restNotify:true, mealAlert:true, mealPrefs:'', apiKey:'', apiModel:'claude-sonnet-5-5', apiModelQuick:'claude-haiku-5-5', musicUrl:'' };
 const yt = q => 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
 const $ = (s, r) => (r || document).querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -1700,7 +1700,7 @@ function startWorkout(w){
   if (S.session){ go('antrenman'); return toast('Önce açık antrenmanı bitir.'); }
   S.session = { id: uid(), dayKey: w.key, dayName: w.name, style: S.program.style, startedAt: Date.now(), warm: false, current: 0, restEnd: null, restTotal: 0,
     exercises: w.exercises.map(e => ({ exId: e.exId, targetSets: e.sets, repMin: e.repMin, repMax: e.repMax, block: e.block, rest: e.rest, log: [], done: false, skipped: false })) };
-  rpeSel = null; aiFb = ''; save(); go('antrenman'); startTick(); requestWake();
+  rpeSel = null; aiFb = ''; save(); go('antrenman'); startTick(); requestWake(); ensureAudio(); unlockAlarm(); askNotify();
 }
 function renderSession(){
   const ses = S.session; const allDone = ses.exercises.every(e => e.done || e.skipped);
@@ -1882,7 +1882,7 @@ function completeSet(){
   e.log.push({ kg, reps, rpe: rpeSel, t: Date.now() }); rpeSel = null;
   if (e.log.length >= e.targetSets) e.done = true;
   ses.restEnd = Date.now() + e.rest * 1000; ses.restTotal = e.rest;
-  ensureAudio(); save(); renderSession(); startTick();
+  ensureAudio(); unlockAlarm(); scheduleAlarm(e.rest); save(); renderSession(); startTick();
 }
 function startTick(){ if (!tickTimer) tickTimer = setInterval(tick, 500); }
 function stopTick(){ clearInterval(tickTimer); tickTimer = null; }
@@ -1893,18 +1893,60 @@ function tick(){
     const left = (ses.restEnd - Date.now()) / 1000;
     const r = $('#restNum'); if (r) r.textContent = fmtClock(Math.max(0, left));
     const b = $('#restBar'); if (b) b.style.width = Math.max(0, Math.min(100, left / ses.restTotal * 100)).toFixed(1) + '%';
-    if (left <= 0){ ses.restEnd = null; save(); restDone(); if (current === 'antrenman') renderSession(); }
+    if (left <= 0){ ses.restEnd = null; save(); restDone(true); if (current === 'antrenman') renderSession(); }
   }
 }
-function restDone(){
-  if (S.profile.restSound) beep();
-  if (S.profile.vibrate && navigator.vibrate){ try { navigator.vibrate([250, 120, 250]); } catch (e) {} }
+/* --- Dinlenme alarmı: ses motorunun saatine önceden kurulur (sekme arkada/ekran kısık olsa da zamanında çalar);
+   sayaç geç kalırsa yedek <audio> ile çalınır; site sürümünde ayrıca sistem bildirimi (kilit ekranı, titreşim). --- */
+let alarmSched = null, alarmEl = null, alarmUrl = '';
+function alarmWav(){
+  if (alarmUrl) return alarmUrl;
+  const sr = 22050, pat = [[0, .16, 880], [.22, .16, 880], [.44, .16, 880], [.72, .34, 1320], [1.18, .16, 880], [1.4, .16, 880], [1.62, .16, 880], [1.9, .5, 1320]], len = Math.ceil(2.5 * sr), buf = new Int16Array(len);
+  pat.forEach(([at, dur, f]) => { const a = Math.round(at * sr), n = Math.round(dur * sr); for (let i = 0; i < n; i++){ const env = Math.min(1, i / 200, (n - i) / 400); const v = Math.sign(Math.sin(2 * Math.PI * f * i / sr)) * 0.35 + Math.sin(2 * Math.PI * f * i / sr) * 0.45; buf[a + i] = Math.max(-32767, Math.min(32767, Math.round(v * env * 32767))); } });
+  const bytes = new Uint8Array(44 + buf.length * 2), dv = new DataView(bytes.buffer), str = (o, t) => { for (let i = 0; i < t.length; i++) bytes[o + i] = t.charCodeAt(i); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + buf.length * 2, true); str(8, 'WAVE'); str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, buf.length * 2, true);
+  new Int16Array(bytes.buffer, 44).set(buf);
+  let b = ''; for (let i = 0; i < bytes.length; i += 8192) b += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  alarmUrl = 'data:audio/wav;base64,' + btoa(b); return alarmUrl;
+}
+function unlockAlarm(){ /* dokunma anında sessizce "aç": iOS/Android sonradan programla çalmaya izin versin */
+  try { if (!alarmEl){ alarmEl = new Audio(alarmWav()); alarmEl.preload = 'auto'; alarmEl.setAttribute('playsinline', ''); }
+    if (!alarmEl.dataset.unlocked){ alarmEl.muted = true; const pr = alarmEl.play(); if (pr && pr.then) pr.then(() => { alarmEl.pause(); alarmEl.currentTime = 0; alarmEl.muted = false; alarmEl.dataset.unlocked = '1'; }).catch(() => { alarmEl.muted = false; }); }
+  } catch (e) {}
+}
+function scheduleAlarm(sec){
+  cancelAlarm(); if (!S.profile.restSound || !audioCtx) return;
+  try {
+    const t0 = audioCtx.currentTime + sec, nodes = [], tone = (at, dur, f, vol) => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.type = 'square'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + 0.015); g.gain.setValueAtTime(vol, at + dur - 0.04); g.gain.exponentialRampToValueAtTime(0.0001, at + dur); o.connect(g); g.connect(audioCtx.destination); o.start(at); o.stop(at + dur + 0.02); nodes.push(o); };
+    if (sec > 4){ [3, 2, 1].forEach(k => tone(t0 - k, 0.08, 660, 0.18)); } // 3-2-1 hazırlık tıkları
+    [[0, .16], [.22, .16], [.44, .16], [.72, .34], [1.18, .16], [1.4, .16], [1.62, .16], [1.9, .5]].forEach(([off, dur], i) => tone(t0 + off, dur, i === 3 || i === 7 ? 1320 : 880, 0.5));
+    alarmSched = { at: t0, nodes };
+  } catch (e) { alarmSched = null; }
+}
+function cancelAlarm(){ if (alarmSched){ alarmSched.nodes.forEach(o => { try { o.stop(); o.disconnect(); } catch (e) {} }); alarmSched = null; } }
+function restDone(fromTimer){
+  if (S.profile.restSound){
+    // ses motoru zamanında çaldıysa (saat alarm anını geçmişse) tekrar çalma; uyutulmuşsa yedek dosyayı çal
+    const played = alarmSched && audioCtx && audioCtx.state === 'running' && audioCtx.currentTime >= alarmSched.at - 0.3;
+    if (!played){ cancelAlarm(); ensureAudio(); let ok = false; try { if (alarmEl && alarmEl.dataset.unlocked){ alarmEl.currentTime = 0; const pr = alarmEl.play(); if (pr && pr.catch) pr.catch(() => beep()); ok = true; } } catch (e) {} if (!ok) beep(); }
+    else alarmSched = null;
+  }
+  if (S.profile.vibrate && navigator.vibrate){ try { navigator.vibrate([300, 100, 300, 100, 600]); } catch (e) {} }
+  notifyRest();
   toast('Dinlenme bitti — sıradaki set!');
 }
-function ensureAudio(){ try { const C = window.AudioContext || window.webkitAudioContext; if (!C) return; if (!audioCtx) audioCtx = new C(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {} }
+function notifyRest(){
+  if (inClaudeApp() || !S.profile.restNotify || !('Notification' in window) || Notification.permission !== 'granted') return;
+  const ses = S.session, e = ses && ses.exercises[ses.current], x = e && EX[e.exId];
+  const opts = { body: x ? `${x.name}: ${e.log.length + 1}. set` : 'Sıradaki set', tag: 'demir-rest', renotify: true, vibrate: [300, 100, 300], silent: false, icon: 'icon-192.png' };
+  const plain = () => { try { new Notification('Dinlenme bitti', opts); } catch (e) {} };
+  try { if (navigator.serviceWorker && navigator.serviceWorker.getRegistration){ navigator.serviceWorker.getRegistration().then(r => { if (r && r.showNotification) r.showNotification('Dinlenme bitti', opts).catch(plain); else plain(); }).catch(plain); } else plain(); } catch (e) { plain(); }
+}
+function askNotify(){ try { if (!inClaudeApp() && S.profile.restNotify && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); } catch (e) {} }
+function ensureAudio(){ try { const C = window.AudioContext || window.webkitAudioContext; if (!C) return; if (!audioCtx) audioCtx = new C(); if (audioCtx.state !== 'running') audioCtx.resume(); } catch (e) {} }
 function beep(){
   try { if (!audioCtx) return; const t0 = audioCtx.currentTime;
-    [0, 0.22, 0.44].forEach(off => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.type = 'sine'; o.frequency.value = 880; g.gain.setValueAtTime(0.0001, t0 + off); g.gain.exponentialRampToValueAtTime(0.25, t0 + off + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + off + 0.18); o.connect(g); g.connect(audioCtx.destination); o.start(t0 + off); o.stop(t0 + off + 0.2); });
+    [0, 0.22, 0.44, 0.72].forEach((off, i) => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.type = 'square'; o.frequency.value = i === 3 ? 1320 : 880; g.gain.setValueAtTime(0.0001, t0 + off); g.gain.exponentialRampToValueAtTime(0.5, t0 + off + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + off + (i === 3 ? 0.4 : 0.18)); o.connect(g); g.connect(audioCtx.destination); o.start(t0 + off); o.stop(t0 + off + 0.5); });
   } catch (e) {}
 }
 function requestWake(){ try { if (navigator.wakeLock && navigator.wakeLock.request) navigator.wakeLock.request('screen').then(l => { wakeLock = l; }).catch(() => {}); } catch (e) {} }
@@ -1984,7 +2026,7 @@ function renderSettings(){
   const p = S.profile, tg = targets(p);
   const sel = (id, opts, val) => `<select id="${id}" class="input">${Object.entries(opts).map(([k, v]) => `<option value="${k}"${String(val) === String(k) ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
   let h = `<div><p class="label">Ayarlar</p><h1>Profil ve hedefler</h1></div>`;
-  h += `<div class="card"><h3>Profil</h3><div class="grid2"><div class="field" style="grid-column:1/-1"><span class="label">Ad (isteğe bağlı)</span><input id="pName" class="input" value="${esc(p.name)}" placeholder="Adın"></div><div class="field"><span class="label">Cinsiyet</span>${sel('pSex', { e: 'Erkek', k: 'Kadın' }, p.sex)}</div><div class="field"><span class="label">Yaş</span><input id="pAge" class="input" type="number" inputmode="numeric" value="${p.age}"></div><div class="field"><span class="label">Boy (cm)</span><input id="pHeight" class="input" type="number" inputmode="numeric" value="${p.height}"></div><div class="field"><span class="label">Kilo (kg)</span><input id="pWeight" class="input" type="number" inputmode="decimal" step="0.1" value="${p.weight}"></div><div class="field" style="grid-column:1/-1"><span class="label">Aktivite</span>${sel('pActivity', ACTIVITY_LABEL, p.activity)}</div><div class="field" style="grid-column:1/-1"><span class="label">Hedef</span>${sel('pGoal', GOAL_LABEL, p.goal)}</div></div><h3>Antrenman</h3><div class="grid2"><div class="field"><span class="label">Tarz</span>${sel('pStyle', { old: 'Old School', modern: 'Modern' }, p.style)}</div><div class="field"><span class="label">Bölünme</span>${sel('pSplit', SPLITS, p.split || 'full')}</div><div class="field"><span class="label">Haftada</span>${sel('pDays', { 2: '2 gün', 3: '3 gün', 4: '4 gün', 6: '6 gün' }, p.days)}</div><div class="field"><span class="label">Ekipman</span>${sel('pEquip', EQUIP_MODES, p.equip)}</div><div class="field"><span class="label">Kalori hedefi (elle, 0 = otomatik)</span><input id="pKcal" class="input" type="number" inputmode="numeric" value="${p.kcalOverride || ''}" placeholder="otomatik ${tg.kcal}"></div></div><div class="row"><label class="row" style="gap:6px"><input id="pSound" type="checkbox" ${p.restSound ? 'checked' : ''}> Dinlenme bitince ses</label><label class="row" style="gap:6px"><input id="pVibe" type="checkbox" ${p.vibrate ? 'checked' : ''}> Titreşim</label></div><button class="btn btn-primary btn-block" data-action="saveProfile">${ICON.check} Kaydet</button><p class="hint">Tarz, bölünme, gün sayısı veya ekipman değişirse program yeniden oluşturulur (Full Body 2/3/4, Üst-Alt 2/4, İtme-Çekme-Bacak 3/6 gün); antrenman geçmişin silinmez.</p></div>`;
+  h += `<div class="card"><h3>Profil</h3><div class="grid2"><div class="field" style="grid-column:1/-1"><span class="label">Ad (isteğe bağlı)</span><input id="pName" class="input" value="${esc(p.name)}" placeholder="Adın"></div><div class="field"><span class="label">Cinsiyet</span>${sel('pSex', { e: 'Erkek', k: 'Kadın' }, p.sex)}</div><div class="field"><span class="label">Yaş</span><input id="pAge" class="input" type="number" inputmode="numeric" value="${p.age}"></div><div class="field"><span class="label">Boy (cm)</span><input id="pHeight" class="input" type="number" inputmode="numeric" value="${p.height}"></div><div class="field"><span class="label">Kilo (kg)</span><input id="pWeight" class="input" type="number" inputmode="decimal" step="0.1" value="${p.weight}"></div><div class="field" style="grid-column:1/-1"><span class="label">Aktivite</span>${sel('pActivity', ACTIVITY_LABEL, p.activity)}</div><div class="field" style="grid-column:1/-1"><span class="label">Hedef</span>${sel('pGoal', GOAL_LABEL, p.goal)}</div></div><h3>Antrenman</h3><div class="grid2"><div class="field"><span class="label">Tarz</span>${sel('pStyle', { old: 'Old School', modern: 'Modern' }, p.style)}</div><div class="field"><span class="label">Bölünme</span>${sel('pSplit', SPLITS, p.split || 'full')}</div><div class="field"><span class="label">Haftada</span>${sel('pDays', { 2: '2 gün', 3: '3 gün', 4: '4 gün', 6: '6 gün' }, p.days)}</div><div class="field"><span class="label">Ekipman</span>${sel('pEquip', EQUIP_MODES, p.equip)}</div><div class="field"><span class="label">Kalori hedefi (elle, 0 = otomatik)</span><input id="pKcal" class="input" type="number" inputmode="numeric" value="${p.kcalOverride || ''}" placeholder="otomatik ${tg.kcal}"></div></div><div class="row"><label class="row" style="gap:6px"><input id="pSound" type="checkbox" ${p.restSound ? 'checked' : ''}> Dinlenme bitince ses</label><label class="row" style="gap:6px"><input id="pVibe" type="checkbox" ${p.vibrate ? 'checked' : ''}> Titreşim</label>${inClaudeApp() ? '' : `<label class="row" style="gap:6px"><input id="pNotify" type="checkbox" ${p.restNotify ? 'checked' : ''}> Bildirim (kilit ekranı)</label>`}<button class="btn btn-sm" data-action="testAlarm">Alarmı dene</button></div><p class="hint">Alarm, set tamamlandığı anda ses motoruna kurulur; telefon elinde değilken de zamanında çalar (son 3 saniyede tık sesi verir). Ekran kapalıyken en güvenilir yol bildirimdir; iPhone'da sayfa arkadayken ses gecikebilir.</p><button class="btn btn-primary btn-block" data-action="saveProfile">${ICON.check} Kaydet</button><p class="hint">Tarz, bölünme, gün sayısı veya ekipman değişirse program yeniden oluşturulur (Full Body 2/3/4, Üst-Alt 2/4, İtme-Çekme-Bacak 3/6 gün); antrenman geçmişin silinmez.</p></div>`;
   h += `<div class="card"><h3>Öğün planı ve saatler</h3><p class="hint">Hedef kalori öğünlere yüzdeyle dağıtılır; saatler "sırada" işaretini ve sayfa açıkken öğün uyarısını belirler.</p><div class="list">${S.mealPlan.map((m, i) => `<div class="item"><span style="width:64px;font-weight:600;flex:none">${MEALS[m.key]}</span><input class="input" type="time" value="${m.time}" data-plan="${i}" data-k="time" style="width:112px;flex:none" aria-label="${MEALS[m.key]} saati"><input class="input" type="number" inputmode="numeric" min="0" max="100" value="${m.pct}" data-plan="${i}" data-k="pct" style="width:68px;flex:none;text-align:right" aria-label="${MEALS[m.key]} yüzdesi"><span class="small muted">%</span><span class="small muted grow right">~${mealTargets()[i].kcal} kcal</span></div>`).join('')}</div><label class="row" style="gap:6px"><input id="pMealAlert" type="checkbox" ${p.mealAlert ? 'checked' : ''}> Sayfa açıkken öğün saatinde uyar (ses + bildirim)</label><div class="row"><button class="btn btn-primary" data-action="savePlan">${ICON.check} Planı kaydet</button><button class="btn btn-ghost" data-action="resetPlan">Varsayılana dön</button></div><p class="hint">Sayfa kapalıyken web sayfası alarm çalamaz; gerçek alarm için aynı saatleri telefonunun Hatırlatıcılar uygulamasına ekle.</p></div>`;
   h += `<div class="card"><h3>Hesaplanan hedefler</h3><div class="kv"><b>Bazal metabolizma</b><span>${fmtK(tg.bmr)} kcal (Mifflin-St Jeor)</span><b>Günlük harcama</b><span>${fmtK(tg.tdee)} kcal</span><b>Hedef</b><span>${fmtK(tg.kcal)} kcal${p.kcalOverride ? ' (elle)' : ' (' + GOAL_LABEL[p.goal] + ')'}</span><b>Protein</b><span>${tg.prot} g (${p.goal === 'cut' ? '2,2' : '1,8'} g/kg)</span><b>Karbonhidrat</b><span>${tg.carb} g</span><b>Yağ</b><span>${tg.fat} g (%25)</span></div></div>`;
   h += `<div class="card"><h3>Yedek (JSON)</h3><p class="hint">Veriler bu tarayıcıda, yerel depolamada tutulur. Telefon veya tarayıcı değişince JSON ile taşırsın.${S.lastExport ? ' Son yedek: ' + new Date(S.lastExport).toLocaleString('tr-TR') : ' Henüz yedek alınmadı.'}</p><div class="row"><button class="btn btn-primary" data-action="exportJson">${ICON.down} JSON indir</button><button class="btn" data-action="copyJson">Kopyala</button></div>${exportText ? `<textarea id="expText" class="input pre" readonly style="min-height:110px">${esc(exportText)}</textarea><p class="hint">İndirme bu görünümde çalışmıyorsa metni seçip bir .json dosyasına yapıştır.</p>` : ''}<hr class="sep"><p class="label">Geri yükle</p><input id="impFile" class="input" type="file" accept=".json,application/json"><textarea id="impText" class="input pre" placeholder="…veya JSON metnini buraya yapıştır" style="min-height:70px"></textarea><button class="btn" data-action="importText">${ICON.up} Metinden yükle</button>${pendingImport ? `<div class="confirm"><span>Yedek bulundu: ${pendingImport.workouts.length} antrenman, ${Object.keys(pendingImport.foods).length} gün beslenme, ${pendingImport.weights.length} kilo kaydı. <b>Mevcut veriler üzerine yazılacak.</b></span><div class="row nowrap"><button class="btn btn-danger btn-sm" data-action="importConfirm">Evet, geri yükle</button><button class="btn btn-sm" data-action="cancelImport">Vazgeç</button></div></div>` : ''}</div>`;
@@ -2000,7 +2042,7 @@ function saveProfile(){
   p.age = Math.min(100, Math.max(14, parseInt(v('pAge')) || p.age)); p.height = Math.min(230, Math.max(120, parseInt(v('pHeight')) || p.height)); p.weight = Math.min(300, Math.max(30, parseFloat(v('pWeight')) || p.weight));
   p.activity = parseInt(v('pActivity')) || 2; p.goal = GOAL_LABEL[v('pGoal')] ? v('pGoal') : 'maintain';
   p.style = ERAS[v('pStyle')] ? v('pStyle') : 'modern'; p.split = SPLITS[v('pSplit')] ? v('pSplit') : 'full'; p.days = [2, 3, 4, 6].includes(parseInt(v('pDays'))) ? parseInt(v('pDays')) : 3; p.equip = EQUIP_MODES[v('pEquip')] ? v('pEquip') : 'gym';
-  p.kcalOverride = Math.max(0, parseInt(v('pKcal')) || 0); p.restSound = !!($('#pSound') || {}).checked; p.vibrate = !!($('#pVibe') || {}).checked;
+  p.kcalOverride = Math.max(0, parseInt(v('pKcal')) || 0); p.restSound = !!($('#pSound') || {}).checked; p.vibrate = !!($('#pVibe') || {}).checked; if ($('#pNotify')){ p.restNotify = !!$('#pNotify').checked; if (p.restNotify) askNotify(); }
   S.profileSet = true;
   const regen = old.style !== p.style || old.days !== p.days || old.equip !== p.equip || old.split !== p.split;
   if (regen){ S.program = buildProgram(p.style, p.days, p.equip, p.split); p.days = S.program.days; }
@@ -2094,12 +2136,13 @@ document.addEventListener('click', ev => {
     case 'repStep': { const i = $('#inReps'); if (i) i.value = Math.max(0, (parseInt(i.value) || 0) + num('d')); break; }
     case 'rpe': rpeSel = rpeSel === num('k') ? null : num('k'); renderSession(); break;
     case 'setDone': completeSet(); break;
-    case 'undoSet': { const e = ses.exercises[ses.current]; e.log.pop(); e.done = false; ses.restEnd = null; save(); renderSession(); break; }
-    case 'skipEx': { const e = ses.exercises[ses.current]; if (!e.log.length) e.skipped = true; else e.done = true; const n = nextPending(ses); if (n != null) ses.current = n; ses.restEnd = null; save(); renderSession(); window.scrollTo(0, 0); break; }
-    case 'nextEx': { const e = ses.exercises[ses.current]; if (e.log.length) e.done = true; const n = nextPending(ses); if (n != null) ses.current = n; ses.restEnd = null; save(); renderSession(); window.scrollTo(0, 0); break; }
-    case 'jumpEx': { const e = ses.exercises[num('i')]; e.skipped = false; ses.current = num('i'); ses.restEnd = null; save(); renderSession(); window.scrollTo(0, 0); break; }
-    case 'restPlus': if (ses.restEnd){ ses.restEnd += 30000; ses.restTotal += 30; save(); tick(); } break;
-    case 'restSkip': ses.restEnd = null; save(); renderSession(); break;
+    case 'undoSet': { const e = ses.exercises[ses.current]; e.log.pop(); e.done = false; ses.restEnd = null; cancelAlarm(); save(); renderSession(); break; }
+    case 'skipEx': { const e = ses.exercises[ses.current]; if (!e.log.length) e.skipped = true; else e.done = true; const n = nextPending(ses); if (n != null) ses.current = n; ses.restEnd = null; cancelAlarm(); save(); renderSession(); window.scrollTo(0, 0); break; }
+    case 'nextEx': { const e = ses.exercises[ses.current]; if (e.log.length) e.done = true; const n = nextPending(ses); if (n != null) ses.current = n; ses.restEnd = null; cancelAlarm(); save(); renderSession(); window.scrollTo(0, 0); break; }
+    case 'jumpEx': { const e = ses.exercises[num('i')]; e.skipped = false; ses.current = num('i'); ses.restEnd = null; cancelAlarm(); save(); renderSession(); window.scrollTo(0, 0); break; }
+    case 'restPlus': if (ses.restEnd){ ses.restEnd += 30000; ses.restTotal += 30; ensureAudio(); scheduleAlarm((ses.restEnd - Date.now()) / 1000); save(); tick(); } break;
+    case 'restSkip': ses.restEnd = null; cancelAlarm(); save(); renderSession(); break;
+    case 'testAlarm': { ensureAudio(); unlockAlarm(); setTimeout(() => { cancelAlarm(); alarmSched = null; restDone(false); }, 300); break; }
     case 'finish': openSummary(); break;
     case 'aiFeedback': aiFeedback(); break;
     case 'saveWorkout': saveWorkout(); break;
