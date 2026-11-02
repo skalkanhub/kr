@@ -1,7 +1,9 @@
 {
   "name": "Demir Defteri",
   "short_name": "Demir Defteri",
-  "description": "Beslenme günlüğü, full body antrenman programı ve set sayaçlı antrenman modu",
+  "id": "./",
+  "description": "Nutrition log, weekly training program and set-by-set workout mode with rest alarm — Beslenme günlüğü, haftalık antrenman programı ve set sayaçlı antrenman modu",
+  "categories": ["health", "fitness", "lifestyle"],
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

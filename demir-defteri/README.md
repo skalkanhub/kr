@@ -27,6 +27,14 @@ Veriler istersen kendi Supabase projene (PostgreSQL) yazılır; cihazlar arası 
 
 Yapay zekâyı kullanıcıya anahtar sordurmadan vermek için `supabase/functions/ai` fonksiyonunu kur (dosyanın başındaki adımlar): anahtar sunucuda kalır, `ai_usage` tablosu günlük limiti tutar (`AI_DAILY_LIMIT`). Sağlayıcı: DeepSeek (ucuz, metin), OpenAI (metin + fotoğraf), Anthropic. Fonksiyon adresini `APP.aiProxy`'ye yaz.
 
+## Dil
+
+Uygulama Türkçe ve İngilizce. İlk açılışta cihaz diline göre seçilir; giriş ekranı, kurulum ve Ayarlar → Profil'den değiştirilir. Yeni dil eklemek için `index.html` içindeki dil katmanına (EN_UI / EN_DATA bloklarının benzeri) bir sözlük eklenir.
+
+## Mağaza paketi (Android / iOS)
+
+`mobile/README.md`: PWABuilder ile paket (kurulumsuz) ya da Capacitor projesi (native kabuk).
+
 ## Dosyalar
 
 - `index.html` — uygulamanın tamamı

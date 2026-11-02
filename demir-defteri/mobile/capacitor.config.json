@@ -1,0 +1,8 @@
+{
+  "appId": "com.demirdefteri.app",
+  "appName": "Demir Defteri",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false, "backgroundColor": "#131416" },
+  "ios": { "contentInset": "automatic", "backgroundColor": "#131416" }
+}
