@@ -21,6 +21,12 @@ Veriler istersen kendi Supabase projene (PostgreSQL) yazılır; cihazlar arası 
 3. Project Settings → API'deki Project URL ve anon public anahtarını uygulamada Ayarlar → Supabase'e gir, e-posta + şifreyle kayıt ol.
 4. Her kayıt 2 sn içinde buluta gider; açılışta buluttan çekilir. Çevrimdışıyken yerelde birikir, internet gelince gönderilir.
 
+## Ürün olarak dağıtım (giriş ekranı, kurumsal kullanım)
+
+`index.html` içindeki `APP` bloğunu doldur: `name`, `tagline`, `company`, `supabaseUrl`, `supabaseAnonKey` ve istersen `aiProxy`. Dolu olduğunda kullanıcılar ilk ekranda e-posta + şifreyle kayıt olur / giriş yapar, kurulum sihirbazı hedefleri alır ve haftalık planı üretir; Supabase alanlarını hiç görmezler.
+
+Yapay zekâyı kullanıcıya anahtar sordurmadan vermek için `supabase/functions/ai` fonksiyonunu kur (dosyanın başındaki adımlar): anahtar sunucuda kalır, `ai_usage` tablosu günlük limiti tutar (`AI_DAILY_LIMIT`). Sağlayıcı: DeepSeek (ucuz, metin), OpenAI (metin + fotoğraf), Anthropic. Fonksiyon adresini `APP.aiProxy`'ye yaz.
+
 ## Dosyalar
 
 - `index.html` — uygulamanın tamamı
@@ -28,3 +34,4 @@ Veriler istersen kendi Supabase projene (PostgreSQL) yazılır; cihazlar arası 
 - `clips/` — kendi ürettiğin hareket videoları (`tools/uret_klipler.py` ile Veo üzerinden üretilir; `clips/manifest.json` hangi hareketin videosu olduğunu söyler). Klip varsa uygulama YouTube yerine onu oynatır.
 - `tools/` — klip üretme scripti ve promptlar
 - `supabase.sql` — Supabase tabloları, güvenlik politikaları ve raporlama görünümleri
+- `supabase/functions/ai/index.ts` — yapay zekâ vekil fonksiyonu (DeepSeek / OpenAI / Anthropic, günlük limit)

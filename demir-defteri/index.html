@@ -237,6 +237,24 @@ video.anim{object-fit:cover;background:#000}
 h4{font-family:var(--font-display);font-weight:700;letter-spacing:.01em}
 body.has-mini .app{padding-bottom:calc(156px + env(safe-area-inset-bottom,0px))}
 body.has-mini .toast{bottom:calc(160px + env(safe-area-inset-bottom,0px))}
+/* giriş + kurulum (çıplak görünüm: sekme çubuğu ve üst sağ gizli) */
+body.bare .tabbar,body.bare .topbar-right,body.bare .mini{display:none}
+body.bare .app{padding-bottom:24px}
+.auth{display:flex;flex-direction:column;gap:14px;max-width:420px;margin:0 auto}
+.auth-hero{text-align:center;padding:18px 0 4px}
+.auth-title{font-size:34px;margin-top:10px;letter-spacing:.01em}
+.lead{color:var(--fg-2);font-size:16px;margin-top:4px}
+.feat{list-style:none;padding:0;margin:16px 0 0;display:flex;flex-direction:column;gap:8px;text-align:left;font-size:14px;color:var(--fg-2)}
+.feat li{display:flex;gap:10px;align-items:flex-start}
+.feat svg{width:18px;height:18px;flex:none;color:var(--accent-text);margin-top:1px}
+.seg-2 button{padding:9px 6px}
+.link{color:var(--accent-text);font-weight:600;text-decoration:underline;text-underline-offset:3px;padding:8px}
+.hint.good{color:var(--good)}
+.wiz{display:flex;flex-direction:column;gap:12px;max-width:520px;margin:0 auto}
+.wiz h2{font-size:24px}
+.dots{display:flex;gap:6px}
+.dots i{flex:1;height:4px;border-radius:2px;background:var(--bg-3)}
+.dots i.on{background:var(--accent)}
 .sheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
 .sheet-panel{background:var(--bg-2);width:100%;max-width:560px;max-height:88%;overflow:auto;border-radius:18px 18px 0 0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow);overscroll-behavior:contain}
 .sheet-handle{width:40px;height:4px;border-radius:2px;background:var(--line-2);margin:0 auto 2px;flex:none}
@@ -328,12 +346,28 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:0}
     <section id="view-antrenman" class="view" aria-label="Antrenman" hidden></section>
     <section id="view-gecmis" class="view" aria-label="Geçmiş" hidden></section>
     <section id="view-ayarlar" class="view" aria-label="Ayarlar" hidden></section>
+    <section id="view-giris" class="view" aria-label="Giriş" hidden></section>
+    <section id="view-kurulum" class="view" aria-label="Kurulum" hidden></section>
   </main>
 </div>
 <nav class="tabbar" aria-label="Ana menü"><div class="tabbar-inner" id="tabs"></div></nav>
 <div id="sheet" class="sheet" hidden><div class="sheet-panel" id="sheetPanel" role="dialog" aria-modal="true"></div></div>
 <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
 <script>
+/* ===== ÜRÜN AYARLARI =====
+   Uygulamayı kendi markanla dağıtırken yalnızca bu bloğu doldur. Boş bırakılan alanlar Ayarlar'dan (sahip tarafından) girilebilir. */
+const APP = {
+  name: 'Demir Defteri',                 // marka adı (başlık, giriş ekranı)
+  tagline: 'Beslenme ve antrenman koçun', // giriş ekranı sloganı
+  company: '',                            // kurumsal ad / telif satırı (boşsa gösterilmez)
+  version: '2.0',
+  supabaseUrl: '',                        // https://xxxx.supabase.co  → doluysa kullanıcılar yalnızca giriş yapar
+  supabaseAnonKey: '',                    // anon public key (gizli değildir; RLS korur)
+  aiProxy: '',                            // https://xxxx.supabase.co/functions/v1/ai → yapay zekâ anahtarı sunucuda kalır, kullanıcı anahtar girmez
+  aiProvider: 'deepseek',                 // anahtarla doğrudan kullanımda varsayılan sağlayıcı: deepseek | openai | anthropic
+  requireLogin: true,                     // ilk ekran giriş ekranı
+  allowGuest: true                        // "Hesapsız devam et" (yalnız bu cihaz) bağlantısı
+};
 /* ===== VERİ: kaslar, hareketler, besinler, program şablonları ===== */
 const MUSCLES = {
   chest:'Göğüs', front_delts:'Ön omuz', side_delts:'Yan omuz', rear_delts:'Arka omuz',
@@ -1279,7 +1313,7 @@ const SB_TABLES = ['food_entries', 'weights', 'workouts'];
 let sb = null, sbUser = null, sbCfg = { url: '', key: '', email: '' }, sbState = 'off', sbMsg = '', sbBusy = false, sbAuthBusy = false, sbLast = 0, sbTimer = null, sbPending = 0;
 let synced = { user: '', food_entries: {}, weights: {}, workouts: {}, app_state: '' };
 
-function sbLoadCfg(){ try { const c = JSON.parse(localStorage.getItem(SB_CFG) || 'null'); if (c && c.url) sbCfg = Object.assign(sbCfg, c); const s = JSON.parse(localStorage.getItem(SB_SYNCED) || 'null'); if (s && s.user) synced = Object.assign(synced, s); } catch (e) {} }
+function sbLoadCfg(){ try { const c = JSON.parse(localStorage.getItem(SB_CFG) || 'null'); if (c && (c.url || c.email)) sbCfg = Object.assign(sbCfg, c); if (APP.supabaseUrl && APP.supabaseAnonKey){ sbCfg.url = APP.supabaseUrl; sbCfg.key = APP.supabaseAnonKey; } const s = JSON.parse(localStorage.getItem(SB_SYNCED) || 'null'); if (s && s.user) synced = Object.assign(synced, s); } catch (e) {} }
 function sbSaveCfg(){ try { localStorage.setItem(SB_CFG, JSON.stringify(sbCfg)); } catch (e) {} }
 function sbSaveSynced(){ try { localStorage.setItem(SB_SYNCED, JSON.stringify(synced)); } catch (e) {} }
 function sbResetSynced(user){ synced = { user: user || '', food_entries: {}, weights: {}, workouts: {}, app_state: '' }; sbSaveSynced(); }
@@ -1296,20 +1330,27 @@ async function sbBoot(){
   sbState = 'loading'; sbMsg = '';
   try {
     await sbScript();
-    sb = window.supabase.createClient(sbCfg.url, sbCfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
-    sb.auth.onAuthStateChange((ev, session) => { if (ev === 'INITIAL_SESSION') return; const u = session && session.user ? session.user : null; const changed = (u && u.id) !== (sbUser && sbUser.id); sbUser = u; if (changed){ if (u){ if (synced.user !== u.id) sbResetSynced(u.id); sbSync('pull'); } else { sbState = 'ready'; } if (typeof current !== 'undefined' && current === 'ayarlar') renderSettings(); } });
+    sb = window.supabase.createClient(sbCfg.url, sbCfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+    sb.auth.onAuthStateChange((ev, session) => {
+      if (ev === 'INITIAL_SESSION') return;
+      if (ev === 'PASSWORD_RECOVERY'){ authRecovery = true; sbUser = session && session.user ? session.user : sbUser; if (location.hash.includes('access_token')) history.replaceState(null, '', location.pathname + '#giris'); route(); return; }
+      const u = session && session.user ? session.user : null; const changed = (u && u.id) !== (sbUser && sbUser.id); sbUser = u;
+      if (!changed) return;
+      if (u){ S.guest = false; if (synced.user !== u.id) sbResetSynced(u.id); sbSync('pull').then(() => { afterAuth(); if (current !== 'giris') render(); }); }
+      else { sbState = 'ready'; if (needLogin()) go('giris'); else if (current === 'ayarlar') renderSettings(); }
+    });
     const { data } = await sb.auth.getSession();
     sbUser = data && data.session ? data.session.user : null; sbState = 'ready';
     if (sbUser){ if (synced.user !== sbUser.id) sbResetSynced(sbUser.id); await sbSync('pull'); }
   } catch (e) { sbState = 'error'; sbMsg = 'Supabase kütüphanesi yüklenemedi (internet yok?) ya da URL/anahtar hatalı.'; sb = null; }
-  if (typeof current !== 'undefined' && current === 'ayarlar') renderSettings();
+  if (typeof route === 'function') route();
 }
 async function sbConnect(url, key){
   url = (url || '').trim().replace(/\/+$/, ''); key = (key || '').trim();
   if (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(url) && !/^https?:\/\/.+/.test(url)) return toast('Proje URL\'si https://xxxx.supabase.co biçiminde olmalı.');
   if (key.length < 20) return toast('anon (public) anahtarını gir.');
-  sbCfg.url = url; sbCfg.key = key; sbSaveCfg(); sb = null; sbUser = null;
-  await sbBoot(); if (sbState === 'ready') toast('Supabase bağlandı; şimdi giriş yap veya kayıt ol.');
+  sbCfg.url = url; sbCfg.key = key; sbSaveCfg(); sb = null; sbUser = null; sbMsg = '';
+  await sbBoot(); if (sbState === 'ready') toast('Supabase bağlandı; şimdi giriş yap veya kayıt ol.'); else if (current === 'giris') renderAuth();
 }
 function sbDisconnect(){ try { if (sb) sb.auth.signOut(); } catch (e) {} sb = null; sbUser = null; sbState = 'off'; sbCfg = { url: '', key: '', email: '' }; sbSaveCfg(); sbResetSynced(''); }
 async function sbSignIn(email, password, signup){
@@ -1325,10 +1366,10 @@ async function sbSignIn(email, password, signup){
   } catch (e) { sbMsg = /invalid login/i.test(e.message || '') ? 'E-posta veya şifre hatalı.' : /already registered/i.test(e.message || '') ? 'Bu e-posta kayıtlı; "Giriş yap".' : /email not confirmed/i.test(e.message || '') ? 'E-posta doğrulanmamış; gelen kutundaki linke tıkla.' : 'Giriş yapılamadı: ' + (e.message || e); }
   sbAuthBusy = false; renderSettings();
 }
-async function sbSignOut(quiet){ sbUser = null; sbResetSynced(''); clearTimeout(sbTimer); try { if (sb) await sb.auth.signOut(); } catch (e) {} if (!quiet){ renderSettings(); toast('Çıkış yapıldı; veriler bu cihazda kalır.'); } }
+async function sbSignOut(quiet){ sbUser = null; sbResetSynced(''); clearTimeout(sbTimer); try { if (sb) await sb.auth.signOut(); } catch (e) {} if (!quiet){ toast('Çıkış yapıldı; veriler bu cihazda kalır.'); if (needLogin()) go('giris'); else renderSettings(); } }
 
 /* --- satır üreticileri: S → tablo satırları (deterministik; aynı veri aynı metin) --- */
-function sbStripProfile(p){ const q = Object.assign({}, p); delete q.apiKey; return q; }
+function sbStripProfile(p){ const q = Object.assign({}, p); delete q.apiKey; delete q.keys; return q; }
 function sbRows(){
   const u = sbUser.id, foods = [];
   Object.keys(S.foods).sort().forEach(day => (S.foods[day] || []).forEach(f => foods.push({ id: f.id, user_id: u, day, meal: f.meal || null, name: f.name, grams: f.grams == null ? null : +f.grams, kcal: +f.kcal || 0, protein: +f.p || 0, carb: +f.c || 0, fat: +f.f || 0, src: f.src || null, thumb: f.thumb || null, logged_at: f.t ? new Date(f.t).toISOString() : null })));
@@ -1381,7 +1422,7 @@ async function sbPull(){
   const { data, error } = await sb.from('app_state').select('data,updated_at').eq('user_id', sbUser.id).maybeSingle(); if (error) throw error;
   const localHash = sbHash(local.app_state.data), localChanged = !!synced.app_state && synced.app_state !== localHash; // ilk eşitlemede bulut kazanır, sonra bu cihazdaki değişiklik
   if (data && data.data && !localChanged){
-    const d = data.data, keep = { apiKey: S.profile.apiKey };
+    const d = data.data, keep = { keys: S.profile.keys, models: S.profile.models };
     if (d.profile) S.profile = Object.assign({}, DEFAULT_PROFILE, d.profile, keep); if (d.profileSet != null) S.profileSet = d.profileSet;
     if (d.program) S.program = d.program; if (d.mealPlan) S.mealPlan = d.mealPlan; if (d.menus) S.menus = d.menus; if (d.mealAlerts) S.mealAlerts = d.mealAlerts;
     if (d.music){ S.music.ytLists = d.music.ytLists || []; S.music.stations = d.music.stations || []; S.music.shuffle = !!d.music.shuffle; S.music.stream = d.music.stream || ''; }
@@ -1401,11 +1442,12 @@ function sbCountPending(){ if (!sbOn()) return 0; try { const rows = sbRows(); l
 /* --- Ayarlar kartı --- */
 function sbCard(){
   if (!sbCanRun()) return '';
+  if (APP.supabaseUrl && APP.supabaseAnonKey) return ''; // ürün modunda kullanıcı bunu görmez
   let h = `<div class="card"><div class="row between nowrap"><h3>Supabase · bulut ve SQL</h3><span class="chip${sbOn() ? ' on' : ''}">${sbOn() ? 'bağlı' : sbState === 'ready' ? 'giriş bekliyor' : sbState === 'loading' ? 'yükleniyor' : sbState === 'error' ? 'hata' : 'kapalı'}</span></div>`;
   h += `<p class="hint">Veriler kendi Supabase projendeki PostgreSQL tablolarına yazılır: cihazlar arası eşitlenir, SQL ile sorgularsın. Bu cihazdaki yerel kopya çevrimdışı da çalışır; internet gelince gönderilir.</p>`;
   if (!sb || sbState !== 'ready'){
     h += `<ol class="hint" style="padding-left:18px;display:grid;gap:4px"><li>supabase.com'da ücretsiz proje aç.</li><li>SQL Editor'de <a href="supabase.sql" download>supabase.sql</a> dosyasını çalıştır (tablolar, güvenlik, görünümler).</li><li>Project Settings → API: <b>Project URL</b> ve <b>anon public</b> anahtarını buraya gir.</li><li>Authentication → Providers → Email: "Confirm email" kapalıysa kayıt anında giriş yapılır.</li></ol>`;
-    h += `<div class="field"><span class="label">Project URL</span><input id="sbUrl" class="input" type="url" autocomplete="off" value="${esc(sbCfg.url)}" placeholder="https://xxxx.supabase.co"></div><div class="field"><span class="label">anon public key</span><input id="sbKey" class="input" type="password" autocomplete="off" value="${esc(sbCfg.key)}" placeholder="eyJ…"></div>`;
+    h += `<div class="field"><span class="label">Project URL</span><input id="sbUrl" class="input" type="url" autocomplete="off" value="${esc(sbCfg.url)}" placeholder="https://xxxx.supabase.co"></div><div class="field"><span class="label">anon public key</span><input id="sbKey" class="input" type="password" autocomplete="off" value="${esc(sbCfg.key)}" placeholder="eyJ…"></div><div class="field"><span class="label">Yapay zekâ fonksiyonu adresi (isteğe bağlı)</span><input id="sbProxy" class="input" type="url" autocomplete="off" value="${esc(sbCfg.aiProxy || '')}" placeholder="https://xxxx.supabase.co/functions/v1/ai"></div><p class="hint">Fonksiyon kuruluysa (README) kullanıcılar anahtar girmeden yapay zekâyı kullanır; anahtar sunucuda kalır.</p>`;
     if (sbMsg) h += `<p class="hint bad">${esc(sbMsg)}</p>`;
     h += `<div class="row"><button class="btn btn-primary" data-action="sbConnect">${sbState === 'loading' ? 'Bağlanıyor…' : 'Bağlan'}</button>${sbCfg.url ? `<button class="btn" data-action="sbDisconnect">Bağlantıyı kaldır</button>` : ''}</div>`;
     return h + `</div>`;
@@ -1419,24 +1461,279 @@ function sbCard(){
   const pend = sbCountPending();
   h += `<div class="kv"><b>Hesap</b><span class="ellipsis">${esc(sbUser.email || sbUser.id)}</span><b>Son eşitleme</b><span>${sbLast ? new Date(sbLast).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—'}</span><b>Bekleyen</b><span>${pend ? pend + ' değişiklik' : 'yok'}</span><b>Kayıt</b><span>${Object.values(S.foods).reduce((a, l) => a + l.length, 0)} besin · ${S.workouts.length} antrenman · ${S.weights.length} kilo</span></div>`;
   if (sbMsg) h += `<p class="hint bad">${esc(sbMsg)}</p>`;
-  h += `<div class="row"><button class="btn btn-primary" data-action="sbSyncNow" ${sbBusy ? 'disabled' : ''}>${sbBusy ? 'Eşitleniyor…' : 'Şimdi eşitle'}</button><button class="btn" data-action="sbLogout">Çıkış</button></div>`;
+  h += `<div class="row"><button class="btn btn-primary" data-action="sbSyncNow" ${sbBusy ? 'disabled' : ''}>${sbBusy ? 'Eşitleniyor…' : 'Şimdi eşitle'}</button><button class="btn" data-action="sbLogout">Çıkış</button><button class="btn" data-action="sbDisconnect">Bağlantıyı kaldır</button></div>`;
+  h += `<div class="field" style="margin-top:8px"><span class="label">Yapay zekâ fonksiyonu adresi (isteğe bağlı)</span><div class="row nowrap"><input id="sbProxy2" class="input grow" type="url" value="${esc(sbCfg.aiProxy || '')}" placeholder="https://xxxx.supabase.co/functions/v1/ai"><button class="btn" data-action="sbProxySave">Kaydet</button></div></div>`;
   h += `<p class="hint">SQL'den bakmak için: <code>daily_nutrition</code>, <code>exercise_progress</code>, <code>weekly_volume</code> görünümleri ve <code>food_entries</code>, <code>workouts</code>, <code>workout_sets</code>, <code>weights</code> tabloları (supabase.sql). JSON geri yükleme buluta da yazılır; "Tüm verileri sil" yalnızca bu cihazı temizler.</p>`;
   return h + `</div>`;
 }
 function sbAction(a){
   switch (a){
-    case 'sbConnect': sbConnect(($('#sbUrl') || {}).value, ($('#sbKey') || {}).value); return true;
+    case 'sbConnect': { const px = (($('#sbProxy') || {}).value || '').trim(); if ($('#sbProxy')){ sbCfg.aiProxy = /^https?:\/\//.test(px) ? px : ''; } sbConnect(($('#sbUrl') || {}).value, ($('#sbKey') || {}).value); return true; }
     case 'sbDisconnect': sbDisconnect(); renderSettings(); toast('Supabase bağlantısı kaldırıldı'); return true;
     case 'sbLogin': sbSignIn(($('#sbEmail') || {}).value, ($('#sbPass') || {}).value, false); return true;
     case 'sbSignup': sbSignIn(($('#sbEmail') || {}).value, ($('#sbPass') || {}).value, true); return true;
     case 'sbLogout': sbSignOut(); return true;
+    case 'sbProxySave': { const px = (($('#sbProxy2') || {}).value || '').trim(); sbCfg.aiProxy = /^https?:\/\//.test(px) ? px : ''; sbSaveCfg(); initCaps().then(() => renderSettings()); toast(sbCfg.aiProxy ? 'Fonksiyon adresi kaydedildi' : 'Fonksiyon adresi kaldırıldı'); return true; }
     case 'sbSyncNow': sbSync('manual'); return true;
+  }
+  return false;
+}
+/* ===== ÜRÜN KATMANI: giriş ekranı, kurulum sihirbazı, haftalık plan, yapay zekâ sağlayıcıları ===== */
+
+/* --- Yapay zekâ sağlayıcıları (OpenAI uyumlu sohbet API'si + Anthropic) --- */
+const PROVIDERS = {
+  deepseek:  { name:'DeepSeek', url:'https://api.deepseek.com/chat/completions', model:'deepseek-chat', quick:'deepseek-chat', vision:false, hint:'sk-…', site:'platform.deepseek.com' },
+  openai:    { name:'OpenAI',   url:'https://api.openai.com/v1/chat/completions', model:'gpt-4o-mini', quick:'gpt-4o-mini', vision:true, hint:'sk-…', site:'platform.openai.com' },
+  anthropic: { name:'Claude',   url:'https://api.anthropic.com/v1/messages', model:'claude-sonnet-5-5', quick:'claude-haiku-5-5', vision:true, hint:'sk-ant-…', site:'console.anthropic.com' }
+};
+const aiProxyUrl = () => (APP.aiProxy || (typeof sbCfg !== 'undefined' && sbCfg.aiProxy) || '').trim();
+function providerFor(images){
+  const keys = S.profile.keys || {}; let p = PROVIDERS[S.profile.aiProvider] ? S.profile.aiProvider : APP.aiProvider;
+  if (!keys[p]){ p = Object.keys(PROVIDERS).find(k => keys[k]) || p; }
+  if (images && !PROVIDERS[p].vision){ const alt = ['openai', 'anthropic'].find(k => keys[k]); if (!alt) throw { code:'no_vision', message: PROVIDERS[p].name + ' fotoğraf okuyamıyor; OpenAI veya Claude anahtarı ekle.' }; p = alt; }
+  if (!keys[p]) throw { code:'not_granted', message:'API anahtarı yok' };
+  return p;
+}
+async function imageParts(opts){ const out = []; if (!opts.images) return out; const imgs = Array.isArray(opts.images) ? opts.images : [opts.images]; for (const f of imgs){ const im = await shrinkImage(f); if (!im) throw { code:'image_rejected', message:'görsel okunamadı' }; out.push(im); } return out; }
+function httpErr(res, msg){ return { code: res.status === 401 || res.status === 403 ? 'bad_key' : res.status === 402 ? 'no_credit' : res.status === 429 ? 'rate_limited' : 'upstream_error', message: msg || ('HTTP ' + res.status) }; }
+function providerShim(){
+  const call = async (prompt, opts, wantJson) => {
+    opts = opts || {}; const imgs = await imageParts(opts); let text = '', truncated = false;
+    const proxy = aiProxyUrl();
+    if (proxy && typeof sbUser !== 'undefined' && sbUser && sb){
+      const { data } = await sb.auth.getSession(); const token = data && data.session && data.session.access_token; if (!token) throw { code:'not_granted', message:'oturum yok' };
+      let res; try { res = await fetch(proxy, { method:'POST', headers:{ 'content-type':'application/json', 'authorization':'Bearer ' + token, 'apikey': APP.supabaseAnonKey || sbCfg.key || '' }, body: JSON.stringify({ prompt, json: wantJson, tier: opts.modelTier || 'default', images: imgs.map(i => ({ type: i.type, data: i.data })) }), signal: opts.signal }); }
+      catch (e) { throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'network', message: String(e) }; }
+      const j = await res.json().catch(() => ({})); if (!res.ok) throw { code: j.code || httpErr(res).code, message: j.error || ('HTTP ' + res.status) };
+      text = j.text || ''; truncated = !!j.truncated;
+    } else {
+      const p = providerFor(imgs.length), P = PROVIDERS[p], key = S.profile.keys[p].trim(), model = (S.profile.models && S.profile.models[p]) || (opts.modelTier === 'quick' ? P.quick : P.model);
+      let res;
+      try {
+        if (p === 'anthropic'){
+          const content = imgs.map(im => ({ type:'image', source:{ type:'base64', media_type: im.type, data: im.data } })).concat([{ type:'text', text: prompt }]);
+          res = await fetch(P.url, { method:'POST', headers:{ 'content-type':'application/json', 'x-api-key': key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' }, body: JSON.stringify({ model, max_tokens: 3000, messages:[{ role:'user', content }] }), signal: opts.signal });
+        } else {
+          const content = imgs.length ? imgs.map(im => ({ type:'image_url', image_url:{ url: 'data:' + im.type + ';base64,' + im.data } })).concat([{ type:'text', text: prompt }]) : prompt;
+          const body = { model, max_tokens: 3000, temperature: 0.4, messages:[{ role:'system', content:'Türkçe yanıt ver. İstenirse yalnızca geçerli JSON döndür.' }, { role:'user', content }] };
+          if (wantJson && !imgs.length) body.response_format = { type:'json_object' };
+          res = await fetch(P.url, { method:'POST', headers:{ 'content-type':'application/json', 'authorization':'Bearer ' + key }, body: JSON.stringify(body), signal: opts.signal });
+        }
+      } catch (e) { throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'network', message: String(e) }; }
+      if (!res.ok){ let msg = ''; try { const j = await res.json(); msg = (j.error && (j.error.message || j.error)) || ''; } catch (e) {} throw httpErr(res, typeof msg === 'string' ? msg : ''); }
+      const data = await res.json();
+      if (p === 'anthropic'){ text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); truncated = data.stop_reason === 'max_tokens'; }
+      else { const ch = (data.choices || [])[0]; text = ch && ch.message ? (typeof ch.message.content === 'string' ? ch.message.content : '') : ''; truncated = !!ch && ch.finish_reason === 'length'; }
+    }
+    if (!text.trim()) throw { code:'empty_completion', message:'boş yanıt' };
+    if (typeof opts.onText === 'function'){ try { opts.onText({ text, delta: text }); } catch (e) {} }
+    if (!wantJson) return { text, truncated, modelTierApplied: opts.modelTier || 'default' };
+    const v = parseJsonLoose(text); if (v === undefined) throw { code:'invalid_json', message:'JSON yok', text }; return v;
+  };
+  const fn = (p, o) => call(p, o, false); fn.json = (p, o) => call(p, o, true);
+  fn.limits = async () => { let vision = !!aiProxyUrl(); if (!vision){ try { vision = PROVIDERS[providerFor(false)].vision || !!(S.profile.keys.openai || S.profile.keys.anthropic); } catch (e) {} } return { maxPromptBytes: 262144, images: vision ? { maxCount: 4, maxInputBytes: 20000000, mediaTypes: ['image/jpeg', 'image/png', 'image/webp'] } : null }; };
+  return fn;
+}
+const aiAvailableOutside = () => !!aiProxyUrl() && typeof sbUser !== 'undefined' && !!sbUser || Object.values(S.profile.keys || {}).some(Boolean);
+function aiLabel(){ if (inClaudeApp()) return 'Claude'; if (aiProxyUrl()) return 'AI'; try { return PROVIDERS[providerFor(false)].name; } catch (e) { return 'AI'; } }
+function aiErrText(code, e){
+  return code === 'cancelled' ? '' : code === 'not_granted' ? (inClaudeApp() ? 'Claude kullanımına izin verilmedi.' : 'Yapay zekâ bağlı değil: Ayarlar → Yapay zekâ.') : code === 'rate_limited' ? 'Günlük/anlık istek sınırı; biraz sonra tekrar dene.' : code === 'bad_key' ? 'API anahtarı reddedildi (401). Ayarlar\'dan kontrol et.' : code === 'no_credit' ? 'Sağlayıcı hesabında bakiye yok (402).' : code === 'no_vision' ? (e && e.message) || 'Bu sağlayıcı fotoğraf okuyamıyor.' : code === 'network' ? 'Sağlayıcıya ulaşılamadı (internet ya da tarayıcı engeli — sunucu üzerinden kullanım için Supabase fonksiyonu kur).' : code === 'invalid_json' ? 'Yanıt düzgün gelmedi, tekrar dene.' : 'İstek başarısız, tekrar dene.';
+}
+
+/* --- Giriş ekranı --- */
+let authMode = 'login', authMsg = '', authBusy = false, authRecovery = false, ownerSetup = false;
+const sbConfigured = () => !!((APP.supabaseUrl && APP.supabaseAnonKey) || (typeof sbCfg !== 'undefined' && sbCfg.url && sbCfg.key));
+const needLogin = () => APP.requireLogin && sbCanRun() && !S.guest && !(typeof sbUser !== 'undefined' && sbUser);
+const bareView = v => v === 'giris' || v === 'kurulum';
+function brandMark(size){ return `<svg viewBox="0 0 24 24" aria-hidden="true" style="width:${size}px;height:${size}px"><circle cx="12" cy="12" r="10" style="fill:var(--accent)"/><circle cx="12" cy="12" r="6.6" style="fill:none;stroke:var(--accent-ink);stroke-opacity:.35;stroke-width:1.2"/><circle cx="12" cy="12" r="3" style="fill:var(--bg)"/></svg>`; }
+function renderAuth(){
+  const loading = sbState === 'loading';
+  let h = `<div class="auth"><div class="auth-hero">${brandMark(56)}<h1 class="auth-title">${esc(APP.name)}</h1><p class="lead">${esc(APP.tagline)}</p><ul class="feat"><li>${ICON.cal} Hedefine göre haftalık beslenme ve antrenman planı</li><li>${ICON.dumb} Set sayacı, dinlenme alarmı, ilerleme ve rekor takibi</li><li>${ICON.spark} Fotoğraftan kalori, menü önerisi, yapay zekâ koç</li></ul></div>`;
+  if (!sbConfigured()){
+    h += `<div class="card"><h3>Kurulum gerekli</h3><p class="hint">Bu kopya henüz bir Supabase projesine bağlı değil. Uygulamanın sahibiysen proje adresini ve anon anahtarını gir (bir kez); dağıtırken <code>APP.supabaseUrl</code> alanına yazarsan kullanıcılar bunu hiç görmez.</p><div class="field"><span class="label">Project URL</span><input id="sbUrl" class="input" type="url" value="${esc(sbCfg.url)}" placeholder="https://xxxx.supabase.co"></div><div class="field"><span class="label">anon public key</span><input id="sbKey" class="input" type="password" value="${esc(sbCfg.key)}" placeholder="eyJ…"></div>${sbMsg ? `<p class="hint bad">${esc(sbMsg)}</p>` : ''}<div class="row"><button class="btn btn-primary" data-action="sbConnect">Bağlan</button></div></div>`;
+  } else if (loading){
+    h += `<div class="card center"><p class="muted">Bağlanıyor…</p></div>`;
+  } else if (sbState === 'error'){
+    h += `<div class="card"><p class="hint bad">${esc(sbMsg || 'Sunucuya bağlanılamadı.')}</p><div class="row"><button class="btn" data-action="authRetry">Tekrar dene</button><button class="btn" data-action="sbDisconnect">Bağlantıyı sıfırla</button></div></div>`;
+  } else if (authRecovery){
+    h += `<div class="card"><h3>Yeni şifre</h3><div class="field"><span class="label">Yeni şifre</span><input id="authPass" class="input" type="password" autocomplete="new-password" placeholder="en az 6 karakter"></div>${authMsg ? `<p class="hint bad">${esc(authMsg)}</p>` : ''}<button class="btn btn-primary btn-block" data-action="authRecover" ${authBusy ? 'disabled' : ''}>Şifreyi güncelle</button></div>`;
+  } else {
+    const m = authMode;
+    h += `<div class="card"><div class="seg seg-2" role="tablist"><button class="${m !== 'signup' ? 'on' : ''}" data-action="authMode" data-mode="login">Giriş yap</button><button class="${m === 'signup' ? 'on' : ''}" data-action="authMode" data-mode="signup">Kayıt ol</button></div>`;
+    h += `<div class="field"><span class="label">E-posta</span><input id="authEmail" class="input" type="email" autocomplete="email" inputmode="email" value="${esc(sbCfg.email || '')}" placeholder="sen@ornek.com"></div>`;
+    if (m !== 'forgot') h += `<div class="field"><span class="label">Şifre</span><input id="authPass" class="input" type="password" autocomplete="${m === 'signup' ? 'new-password' : 'current-password'}" placeholder="${m === 'signup' ? 'en az 6 karakter' : '••••••••'}"></div>`;
+    if (authMsg) h += `<p class="hint ${/gönderildi|alındı/.test(authMsg) ? 'good' : 'bad'}">${esc(authMsg)}</p>`;
+    if (m === 'forgot') h += `<button class="btn btn-primary btn-block" data-action="authForgot" ${authBusy ? 'disabled' : ''}>Sıfırlama linki gönder</button><button class="btn btn-ghost btn-block" data-action="authMode" data-mode="login">Geri</button>`;
+    else h += `<button class="btn btn-primary btn-block" data-action="${m === 'signup' ? 'authSignup' : 'authLogin'}" ${authBusy ? 'disabled' : ''}>${authBusy ? 'Bekle…' : m === 'signup' ? 'Hesap oluştur' : 'Giriş yap'}</button>${m === 'signup' ? `<p class="hint">Kayıt olarak verilerinin yalnızca sana ait hesapta saklanmasını kabul edersin; istediğin zaman JSON olarak indirip silebilirsin.</p>` : `<button class="btn btn-ghost btn-block" data-action="authMode" data-mode="forgot">Şifremi unuttum</button>`}`;
+    h += `</div>`;
+  }
+  if (APP.allowGuest && !authRecovery) h += `<p class="center"><button class="link" data-action="authGuest">Hesapsız devam et (yalnız bu cihaz)</button></p>`;
+  h += `<p class="small muted center" style="margin-top:8px">${esc(APP.company ? APP.company + ' · ' : '')}v${esc(APP.version)} · Veriler yalnızca senin hesabında, satır düzeyi güvenlikle korunur.</p></div>`;
+  $('#view-giris').innerHTML = h;
+}
+function authAction(a, d){
+  const email = () => (($('#authEmail') || {}).value || '').trim(), pass = () => ($('#authPass') || {}).value || '';
+  switch (a){
+    case 'authMode': authMode = d.mode; authMsg = ''; renderAuth(); return true;
+    case 'authLogin': case 'authSignup': {
+      if (!sb) return toast('Sunucuya bağlı değil.'), true;
+      const em = email(), pw = pass(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return toast('Geçerli e-posta gir.'), true; if (pw.length < 6) return toast('Şifre en az 6 karakter.'), true;
+      authBusy = true; authMsg = ''; renderAuth();
+      sbSignIn(em, pw, a === 'authSignup').then(() => { authBusy = false; authMsg = sbMsg; sbMsg = ''; if (!sbUser) renderAuth(); });
+      return true;
+    }
+    case 'authForgot': {
+      const em = email(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return toast('Geçerli e-posta gir.'), true;
+      authBusy = true; renderAuth();
+      sb.auth.resetPasswordForEmail(em, { redirectTo: location.href.split('#')[0] }).then(r => { authBusy = false; authMsg = r.error ? 'Gönderilemedi: ' + r.error.message : 'Sıfırlama linki e-postana gönderildi.'; renderAuth(); });
+      return true;
+    }
+    case 'authRecover': {
+      const pw = pass(); if (pw.length < 6) return toast('Şifre en az 6 karakter.'), true; authBusy = true; renderAuth();
+      sb.auth.updateUser({ password: pw }).then(r => { authBusy = false; if (r.error){ authMsg = 'Güncellenemedi: ' + r.error.message; renderAuth(); } else { authRecovery = false; authMsg = ''; toast('Şifre güncellendi'); go(S.profileSet ? 'bugun' : 'kurulum'); } });
+      return true;
+    }
+    case 'authGuest': S.guest = true; save(); go(S.profileSet ? 'bugun' : 'kurulum'); return true;
+    case 'authRetry': sbBoot().then(() => route()); return true;
+  }
+  return false;
+}
+function afterAuth(){ authBusy = false; authMsg = ''; if (current === 'giris' || !current) go(S.profileSet ? 'bugun' : 'kurulum'); else if (current === 'ayarlar') renderSettings(); }
+
+/* --- Kurulum sihirbazı (ilk giriş): bilgiler → hedefler → program → haftalık plan --- */
+const MEAL_PRESETS = {
+  3: [{ key:'kahvalti', time:'08:00', pct:30 }, { key:'ogle', time:'13:00', pct:40 }, { key:'aksam', time:'19:30', pct:30 }],
+  4: [{ key:'kahvalti', time:'08:00', pct:25 }, { key:'ogle', time:'13:00', pct:35 }, { key:'ara2', time:'16:00', pct:10 }, { key:'aksam', time:'19:30', pct:30 }],
+  5: [{ key:'kahvalti', time:'08:00', pct:25 }, { key:'ara1', time:'10:30', pct:10 }, { key:'ogle', time:'13:00', pct:30 }, { key:'ara2', time:'16:00', pct:10 }, { key:'aksam', time:'19:30', pct:25 }],
+  6: [{ key:'kahvalti', time:'08:00', pct:22 }, { key:'ara1', time:'10:30', pct:10 }, { key:'ogle', time:'13:00', pct:26 }, { key:'ara2', time:'16:00', pct:10 }, { key:'aksam', time:'19:30', pct:24 }, { key:'ara3', time:'22:00', pct:8 }]
+};
+const DIET_LABEL = { normal:'Her şeyi yerim', vejetaryen:'Vejetaryen', pesketaryen:'Pesketaryen (balık var)', vegan:'Vegan' };
+const EXP_LABEL = { yeni:'Yeni (0-1 yıl)', orta:'Orta (1-3 yıl)', ileri:'İleri (3+ yıl)' };
+let wiz = null, planBusy = false, planMsg = '';
+function wizStart(){ const p = S.profile; wiz = { step: 0, d: { name: p.name, sex: p.sex, age: p.age, height: p.height, weight: p.weight, goal: p.goal, targetWeight: p.targetWeight || '', activity: p.activity, days: p.days, equip: p.equip, style: p.style, split: p.split, experience: p.experience || 'yeni', diet: p.diet || 'normal', mealCount: p.mealCount || S.mealPlan.length || 5, allergies: p.allergies || '', dislikes: p.dislikes || '', mealPrefs: p.mealPrefs || '' } }; }
+function wizRead(){ if (!wiz) return; const v = id => { const el = $('#' + id); return el ? (el.type === 'checkbox' ? el.checked : el.value) : undefined; }; const d = wiz.d;
+  ['name','sex','age','height','weight','goal','targetWeight','activity','days','equip','style','split','experience','diet','mealCount','allergies','dislikes','mealPrefs'].forEach(k => { const x = v('wz_' + k); if (x !== undefined) d[k] = x; }); }
+function renderSetup(){
+  if (!wiz) wizStart();
+  const d = wiz.d, step = wiz.step, total = 5;
+  const sel = (id, opts, val) => `<select id="${id}" class="input">${Object.entries(opts).map(([k, v]) => `<option value="${k}"${String(val) === String(k) ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
+  const fld = (label, inner, full) => `<div class="field"${full ? ' style="grid-column:1/-1"' : ''}><span class="label">${label}</span>${inner}</div>`;
+  let body = '';
+  if (step === 0) body = `<h2>Seni tanıyalım</h2><p class="hint">Kalori ve protein hedefleri bu bilgilerden hesaplanır (Mifflin-St Jeor).</p><div class="grid2">${fld('Ad', `<input id="wz_name" class="input" value="${esc(d.name)}" placeholder="Adın">`, true)}${fld('Cinsiyet', sel('wz_sex', { e:'Erkek', k:'Kadın' }, d.sex))}${fld('Yaş', `<input id="wz_age" class="input" type="number" inputmode="numeric" value="${d.age}">`)}${fld('Boy (cm)', `<input id="wz_height" class="input" type="number" inputmode="numeric" value="${d.height}">`)}${fld('Kilo (kg)', `<input id="wz_weight" class="input" type="number" inputmode="decimal" step="0.1" value="${d.weight}">`)}</div>`;
+  else if (step === 1) body = `<h2>Hedefin ne?</h2><div class="grid2">${fld('Amaç', sel('wz_goal', GOAL_LABEL, d.goal), true)}${fld('Hedef kilo (isteğe bağlı)', `<input id="wz_targetWeight" class="input" type="number" inputmode="decimal" step="0.1" value="${esc(String(d.targetWeight || ''))}" placeholder="örn. 78">`)}${fld('Günlük aktivite', sel('wz_activity', ACTIVITY_LABEL, d.activity))}</div><p class="hint">Yağ yakımında hedef, harcamanın 500 kcal altı; kas yapımında 300 kcal üstü. Haftada 0,5 kg değişim sağlıklı tempodur.</p>`;
+  else if (step === 2) body = `<h2>Antrenman</h2><div class="grid2">${fld('Haftada kaç gün?', sel('wz_days', { 2:'2 gün', 3:'3 gün', 4:'4 gün', 6:'6 gün' }, d.days))}${fld('Ekipman', sel('wz_equip', EQUIP_MODES, d.equip))}${fld('Bölünme', sel('wz_split', SPLITS, d.split))}${fld('Tarz', sel('wz_style', { modern:'Modern (çift ilerleme)', old:'Old school (lineer)' }, d.style))}${fld('Deneyim', sel('wz_experience', EXP_LABEL, d.experience), true)}</div><p class="hint">Full body 2-4 gün, Üst/Alt 2 veya 4 gün, İtme/Çekme/Bacak 3 veya 6 gün için uygundur; uymayan seçim en yakın güne çekilir.</p>`;
+  else if (step === 3) body = `<h2>Beslenme tercihleri</h2><div class="grid2">${fld('Beslenme tipi', sel('wz_diet', DIET_LABEL, d.diet))}${fld('Günde kaç öğün?', sel('wz_mealCount', { 3:'3 öğün', 4:'4 öğün', 5:'5 öğün', 6:'6 öğün' }, d.mealCount))}${fld('Alerji / yemediklerin', `<input id="wz_allergies" class="input" value="${esc(d.allergies)}" placeholder="örn. fındık, laktoz">`, true)}${fld('Sevmediklerin', `<input id="wz_dislikes" class="input" value="${esc(d.dislikes)}" placeholder="örn. balık, brokoli">`, true)}${fld('Not (isteğe bağlı)', `<input id="wz_mealPrefs" class="input" value="${esc(d.mealPrefs)}" placeholder="örn. öğlen iş yemekhanesi, akşam evde">`, true)}</div>`;
+  else {
+    const p = Object.assign({}, S.profile, wizProfile()), tg = targets(p), days = SPLIT_DAYS[p.split].includes(+p.days) ? +p.days : SPLIT_DAYS[p.split][0];
+    body = `<h2>Özet</h2><div class="kv"><b>Günlük hedef</b><span>${fmtK(tg.kcal)} kcal · P ${tg.prot} g · K ${tg.carb} g · Y ${tg.fat} g</span><b>Amaç</b><span>${GOAL_LABEL[p.goal]}</span><b>Antrenman</b><span>Haftada ${days} gün · ${SPLITS[p.split]} · ${p.style === 'old' ? 'Old school' : 'Modern'} · ${EQUIP_MODES[p.equip]}</span><b>Öğün</b><span>${p.mealCount} öğün · ${DIET_LABEL[p.diet]}${p.allergies ? ' · ' + esc(p.allergies) + ' yok' : ''}</span></div><p class="hint">"Planımı oluştur" haftalık antrenman takvimini ve 7 günlük menüyü hazırlar${AI ? ' (yapay zekâ ile, 30-60 sn)' : ' (besin veritabanından)'}. Sonradan Ayarlar'dan her şeyi değiştirebilirsin.</p>${planMsg ? `<p class="hint bad">${esc(planMsg)}</p>` : ''}`;
+  }
+  let h = `<div class="wiz"><div class="row between nowrap"><p class="label">Kurulum</p><span class="small muted">Adım ${step + 1}/${total}</span></div><div class="dots">${Array.from({ length: total }, (_, i) => `<i class="${i <= step ? 'on' : ''}"></i>`).join('')}</div><div class="card stack">${body}</div>`;
+  h += `<div class="row nowrap">${step > 0 ? `<button class="btn" data-action="wizPrev">${ICON.left} Geri</button>` : `<button class="btn btn-ghost" data-action="wizSkip">Şimdilik atla</button>`}<span class="grow"></span>${step < total - 1 ? `<button class="btn btn-primary" data-action="wizNext">İleri ${ICON.right}</button>` : `<button class="btn btn-primary" data-action="wizFinish" ${planBusy ? 'disabled' : ''}>${planBusy ? 'Plan hazırlanıyor…' : ICON.spark + ' Planımı oluştur'}</button>`}</div></div>`;
+  $('#view-kurulum').innerHTML = h;
+}
+function wizProfile(){ const d = wiz.d, p = {};
+  p.name = (d.name || '').trim().slice(0, 30); p.sex = d.sex === 'k' ? 'k' : 'e'; p.age = Math.min(100, Math.max(14, parseInt(d.age) || 30)); p.height = Math.min(230, Math.max(120, parseInt(d.height) || 175)); p.weight = Math.min(300, Math.max(30, parseFloat(d.weight) || 75));
+  p.goal = GOAL_LABEL[d.goal] ? d.goal : 'maintain'; p.targetWeight = parseFloat(d.targetWeight) || 0; p.activity = ACTIVITY[d.activity] ? +d.activity : 2;
+  p.split = SPLITS[d.split] ? d.split : 'full'; p.days = SPLIT_DAYS[p.split].includes(+d.days) ? +d.days : SPLIT_DAYS[p.split][0]; p.equip = EQUIP_MODES[d.equip] ? d.equip : 'gym'; p.style = d.style === 'old' ? 'old' : 'modern'; p.experience = EXP_LABEL[d.experience] ? d.experience : 'yeni';
+  p.diet = DIET_LABEL[d.diet] ? d.diet : 'normal'; p.mealCount = MEAL_PRESETS[d.mealCount] ? +d.mealCount : 5; p.allergies = (d.allergies || '').trim().slice(0, 120); p.dislikes = (d.dislikes || '').trim().slice(0, 120); p.mealPrefs = (d.mealPrefs || '').trim().slice(0, 160);
+  return p; }
+function wizAction(a){
+  switch (a){
+    case 'wizNext': wizRead(); if (wiz.step === 0){ const d = wiz.d; if (!(parseInt(d.age) > 13) || !(parseInt(d.height) > 100) || !(parseFloat(d.weight) > 25)) return toast('Yaş, boy ve kiloyu kontrol et.'), true; } wiz.step = Math.min(4, wiz.step + 1); renderSetup(); window.scrollTo(0, 0); return true;
+    case 'wizPrev': wizRead(); wiz.step = Math.max(0, wiz.step - 1); renderSetup(); window.scrollTo(0, 0); return true;
+    case 'wizSkip': S.skipSetup = true; save(); go('bugun'); return true;
+    case 'wizFinish': wizRead(); finishSetup(); return true;
+  }
+  return false;
+}
+async function finishSetup(){
+  if (planBusy) return; planBusy = true; planMsg = ''; renderSetup();
+  const np = wizProfile(), p = S.profile, regen = p.style !== np.style || p.days !== np.days || p.equip !== np.equip || p.split !== np.split || !S.profileSet;
+  Object.assign(p, np); S.profileSet = true; S.skipSetup = false;
+  S.mealPlan = MEAL_PRESETS[p.mealCount].map(m => Object.assign({}, m));
+  if (regen){ S.program = buildProgram(p.style, p.days, p.equip, p.split); p.days = S.program.days; }
+  save();
+  const r = await buildWeekPlan(true);
+  planBusy = false; wiz = null;
+  toast(r.source === 'ai' ? 'Haftalık plan hazır (yapay zekâ)' : 'Haftalık plan hazır');
+  go('program');
+}
+
+/* --- Haftalık plan: antrenman takvimi + 7 günlük menü --- */
+const WEEK_TPL = {
+  kahvalti: [[['Yumurta (haşlanmış)', 100], ['Beyaz peynir', 30], ['Zeytin (siyah)', 20], ['Tam buğday ekmeği', 50], ['Domates', 120], ['Salatalık', 100]], [['Yulaf ezmesi', 60], ['Süt (tam yağlı)', 200], ['Muz', 100], ['Badem', 15], ['Bal', 8]], [['Menemen', 200], ['Tam buğday ekmeği', 50], ['Beyaz peynir', 30]], [['Lor peyniri', 100], ['Ceviz', 20], ['Tam buğday ekmeği', 50], ['Domates', 120], ['Bal', 8]]],
+  ogle: [[['Tavuk göğsü (ızgara)', 150], ['Bulgur pilavı', 150], ['Yoğurt', 150], ['Çoban salata', 150]], [['Mercimek çorbası', 250], ['Köfte (ızgara)', 120], ['Pirinç pilavı (tereyağlı)', 120], ['Mevsim salata (yağsız)', 150]], [['Ton balığı (konserve, suda)', 100], ['Makarna (haşlanmış)', 150], ['Mevsim salata (yağsız)', 150], ['Zeytinyağı', 10]], [['Kuru fasulye (etli)', 250], ['Bulgur pilavı', 120], ['Ayran', 200]]],
+  aksam: [[['Somon (fırın)', 150], ['Patates (haşlanmış)', 150], ['Brokoli (haşlanmış)', 150]], [['Dana biftek (ızgara)', 150], ['Bulgur pilavı', 100], ['Mevsim salata (yağsız)', 150], ['Zeytinyağı', 10]], [['Levrek (ızgara)', 200], ['Taze fasulye (zeytinyağlı)', 150], ['Tam buğday ekmeği', 50]], [['Tavuk but (derili, fırın)', 150], ['Pirinç pilavı (tereyağlı)', 120], ['Ispanak yemeği', 150], ['Yoğurt', 150]]],
+  ara: [[['Yoğurt', 150], ['Muz', 100]], [['Elma', 150], ['Badem', 20]], [['Whey protein tozu', 30], ['Süt (tam yağlı)', 200]], [['Fındık', 20], ['Kuru üzüm', 20]], [['Ayran', 200], ['Simit', 60]]]
+};
+const VEG_SWAP = { 'Tavuk göğsü (ızgara)':'Nohut yemeği', 'Köfte (ızgara)':'Lor peyniri', 'Dana biftek (ızgara)':'Yumurta (haşlanmış)', 'Tavuk but (derili, fırın)':'Kuru fasulye (etli)', 'Kuru fasulye (etli)':'Nohut yemeği', 'Somon (fırın)':'Nohut yemeği', 'Levrek (ızgara)':'Menemen', 'Ton balığı (konserve, suda)':'Lor peyniri', 'Mercimek çorbası':'Mercimek çorbası' };
+const PESC_SWAP = { 'Tavuk göğsü (ızgara)':'Levrek (ızgara)', 'Köfte (ızgara)':'Somon (fırın)', 'Dana biftek (ızgara)':'Somon (fırın)', 'Tavuk but (derili, fırın)':'Levrek (ızgara)', 'Kuru fasulye (etli)':'Nohut yemeği' };
+const VEGAN_SWAP = Object.assign({}, VEG_SWAP, { 'Yumurta (haşlanmış)':'Tahin', 'Beyaz peynir':'Fıstık ezmesi', 'Lor peyniri':'Nohut yemeği', 'Yoğurt':'Pekmez', 'Süt (tam yağlı)':'Meyve suyu', 'Ayran':'Çay (şekersiz)', 'Whey protein tozu':'Fıstık ezmesi', 'Menemen':'Nohut yemeği', 'Bal':'Pekmez', 'Kaşar peyniri':'Tahin' });
+const foodByName = n => FOODS.find(f => f.name === n);
+function autoMenu(date, dayIdx, mt, p){
+  const avoid = (p.allergies + ',' + p.dislikes).toLocaleLowerCase('tr').split(/[,;\n]/).map(s => s.trim()).filter(s => s.length > 1);
+  const swap = p.diet === 'vegan' ? VEGAN_SWAP : p.diet === 'vejetaryen' ? VEG_SWAP : p.diet === 'pesketaryen' ? PESC_SWAP : {};
+  const meals = mt.map((m, mi) => {
+    const bucket = WEEK_TPL[m.key] || WEEK_TPL.ara, tpl = bucket[(dayIdx + mi) % bucket.length];
+    let items = tpl.map(([name, g]) => { let n = swap[name] || name; if (avoid.some(a => n.toLocaleLowerCase('tr').includes(a))) n = ''; const f = n && foodByName(n); return f ? { f, g } : null; }).filter(Boolean);
+    if (!items.length) items = [{ f: foodByName('Yoğurt') || FOODS[0], g: 150 }];
+    const base = items.reduce((a, it) => a + it.f.kcal * it.g / 100, 0) || 1, k = Math.min(1.8, Math.max(0.5, m.kcal / base));
+    return { key: m.key, items: items.map(it => scaleFood(it.f, Math.max(5, Math.round(it.g * k / 5) * 5))) };
+  });
+  return { t: Date.now(), source: 'auto', note: 'Besin veritabanından hedefe göre ölçeklendi; "Günlüğe ekle" ile yediğin kadarını işle.', meals };
+}
+function weekDates(){ const m = mondayOf(today()); return Array.from({ length: 7 }, (_, i) => addDays(m, i)); }
+function cleanMenu(data, mt){ const keys = new Set(mt.map(m => m.key)); const meals = (Array.isArray(data) ? data : []).filter(m => m && keys.has(m.key) && Array.isArray(m.items) && m.items.length).map(m => ({ key: m.key, items: m.items.slice(0, 6).map(it => ({ name: String(it.name || 'Kalem').slice(0, 80), grams: Math.max(0, Math.round(+it.grams || 0)), kcal: Math.max(0, Math.round(+it.kcal || 0)), p: r1(+it.protein || +it.p || 0), c: r1(+it.carb || +it.c || 0), f: r1(+it.fat || +it.f || 0) })) })); return meals.length >= Math.min(3, mt.length) ? meals : null; }
+async function buildWeekPlan(useAi){
+  const p = S.profile, tg = targets(p), mt = mealTargets(), dates = weekDates();
+  const days = dates.map(d => { const pl = planForDate(d); return { date: d, workout: pl ? { index: pl.index, name: pl.workout.name } : null }; });
+  let source = 'auto', note = '';
+  if (useAi && AI && !aiBusy){
+    try {
+      const prompt = `Sen bir spor diyetisyenisin. Kullanıcı: ${p.sex === 'k' ? 'kadın' : 'erkek'}, ${p.age} yaş, ${p.height} cm, ${p.weight} kg. Amaç: ${GOAL_LABEL[p.goal]}. Günlük hedef ${tg.kcal} kcal, protein ${tg.prot} g, karbonhidrat ${tg.carb} g, yağ ${tg.fat} g. Beslenme tipi: ${DIET_LABEL[p.diet || 'normal']}.${p.allergies ? ' KESİNLİKLE kullanma: ' + p.allergies + '.' : ''}${p.dislikes ? ' Sevmez: ' + p.dislikes + '.' : ''}${p.mealPrefs ? ' Not: ' + p.mealPrefs + '.' : ''}
+Öğünler: ${mt.map(m => m.key + ' (' + m.name + ' ' + m.time + ') ~' + m.kcal + ' kcal').join('; ')}.
+Antrenman günleri: ${days.map((d, i) => DAYS_TR[parseYmd(d.date).getDay()] + (d.workout ? ' (' + d.workout.name + ')' : ' (dinlenme)')).join(', ')}. Antrenman günlerinde karbonhidratı biraz yüksek, dinlenme günlerinde biraz düşük tut; günlük kcal hedefe ±%5.
+Türk mutfağından pratik, tekrar etmeyen 7 günlük menü yaz; her öğünde 1-4 kalem, her kalemde gram, kcal, protein, carb, fat tam sayı.
+SADECE şu JSON'u döndür: {"days":[{"day":1,"meals":[{"key":"kahvalti","items":[{"name":"kalem (porsiyon)","grams":0,"kcal":0,"protein":0,"carb":0,"fat":0}]}]}],"note":"tek cümle"}
+day 1 = ${DAYS_TR[parseYmd(dates[0]).getDay()]} … day 7 = ${DAYS_TR[parseYmd(dates[6]).getDay()]}. Kullanılacak key değerleri: ${mt.map(m => m.key).join(', ')}.`;
+      const data = await AI.json(prompt, { modelTier: 'default', cache: false });
+      const got = data && Array.isArray(data.days) ? data.days : []; let ok = 0;
+      dates.forEach((d, i) => { const dd = got.find(x => +x.day === i + 1) || got[i]; const meals = dd && cleanMenu(dd.meals, mt); if (meals){ S.menus[d] = { t: Date.now(), source: 'ai', note: '', meals }; ok++; } else S.menus[d] = autoMenu(d, i, mt, p); });
+      if (ok >= 5){ source = 'ai'; note = typeof data.note === 'string' ? data.note.slice(0, 200) : ''; } else { planMsg = 'Yapay zekâ menüsü eksik geldi; eksik günler veritabanından tamamlandı.'; }
+    } catch (e) { planMsg = (aiErrText(e && e.code, e) || 'Yapay zekâ yanıt vermedi') + ' — menü besin veritabanından hazırlandı.'; dates.forEach((d, i) => { S.menus[d] = autoMenu(d, i, mt, p); }); }
+  } else dates.forEach((d, i) => { S.menus[d] = autoMenu(d, i, mt, p); });
+  S.weekPlan = { start: dates[0], t: Date.now(), source, note, days }; save();
+  return { source };
+}
+function weekPlanCard(){
+  const wp = S.weekPlan, cur = weekDates(), stale = !wp || wp.start !== cur[0], tg = targets(S.profile);
+  let h = `<div class="card"><div class="row between nowrap"><div><p class="label">Haftalık plan</p><h3>${stale ? 'Bu hafta için plan yok' : fmtDateShort(wp.start) + ' – ' + fmtDateShort(addDays(wp.start, 6))}</h3></div><button class="btn btn-sm${stale ? ' btn-primary' : ''}" data-action="weekPlanBuild" ${planBusy ? 'disabled' : ''}>${planBusy ? 'Hazırlanıyor…' : ICON.spark + (stale ? ' Planı oluştur' : ' Yenile')}</button></div>`;
+  if (planMsg) h += `<p class="hint bad">${esc(planMsg)}</p>`;
+  if (stale) return h + `<p class="hint">Antrenman günleri ve 7 günlük menü ${AI ? 'yapay zekâ ile ' : ''}hedeflerine göre hazırlanır. Hedef: ${fmtK(tg.kcal)} kcal · P ${tg.prot} g.</p></div>`;
+  if (wp.note) h += `<p class="hint">${esc(wp.note)}</p>`;
+  h += `<div class="list">${wp.days.map(d => { const menu = S.menus[d.date], kcal = menu ? menu.meals.reduce((a, m) => a + sumFoods(m.items).kcal, 0) : 0, isT = d.date === today(); return `<button class="item" style="text-align:left" data-action="weekDay" data-date="${d.date}"><span style="width:44px;flex:none"><b class="${isT ? 'acc' : ''}">${DAYS_SHORT[parseYmd(d.date).getDay()]}</b><br><span class="small muted">${parseYmd(d.date).getDate()}</span></span><span class="grow" style="min-width:0"><span class="t ellipsis" style="display:block">${d.workout ? ICON.dumb + ' ' + esc(d.workout.name) : '<span class="muted">Dinlenme</span>'}</span><span class="d">${menu ? fmtK(kcal) + ' kcal · ' + menu.meals.length + ' öğün' + (menu.source === 'ai' ? ' · AI' : '') : 'menü yok'}</span></span>${ICON.right}</button>`; }).join('')}</div>`;
+  return h + `<p class="hint">${wp.source === 'ai' ? 'Menüler yapay zekâ ile hazırlandı; ' : 'Menüler besin veritabanından ölçeklendi; '}günün menüsü Beslenme sekmesinde "Günlüğe ekle" ile işlenir.</p></div>`;
+}
+function weekDaySheet(date){
+  const d = (S.weekPlan && S.weekPlan.days.find(x => x.date === date)) || { date, workout: null }, menu = S.menus[date];
+  let h = `<div class="sheet-handle"></div><div class="sheet-head"><div><p class="label">${fmtDate(date)}</p><h2 style="font-size:22px">${d.workout ? esc(d.workout.name) : 'Dinlenme günü'}</h2></div><button class="iconbtn" data-action="closeSheet" aria-label="Kapat">${ICON.x}</button></div>`;
+  if (d.workout){ const w = S.program.workouts[d.workout.index]; if (w) h += `<p class="small muted">${w.exercises.map(e => esc((EX[e.exId] || {}).name || e.exId)).join(' · ')}</p><button class="btn btn-primary btn-block" data-action="startDay" data-i="${d.workout.index}">${ICON.play} Bu antrenmanı başlat</button><hr class="sep">`; }
+  else h += `<p class="hint">Hafif yürüyüş, esneme ve uyku; kas dinlenirken büyür.</p><hr class="sep">`;
+  if (menu){ let total = 0; menu.meals.forEach(m => { const st = sumFoods(m.items); total += st.kcal; h += `<div class="meal-h"><span class="label">${MEALS[m.key] || m.key} · ${fmtK(st.kcal)} kcal · P ${Math.round(st.p)}</span>${date === today() ? `<button class="btn btn-sm" data-action="menuAddDate" data-k="${m.key}" data-date="${date}">${ICON.check} Günlüğe ekle</button>` : ''}</div><ul class="small muted" style="margin:0 0 6px">${m.items.map(it => `<li>${esc(it.name)} — ${it.grams} g · ${it.kcal} kcal</li>`).join('')}</ul>`; }); h += `<p class="small"><b>Toplam ${fmtK(total)} kcal</b> · hedef ${fmtK(targets(S.profile).kcal)}</p>`; }
+  else h += `<p class="hint">Bu gün için menü yok; Program sekmesinde "Planı oluştur".</p>`;
+  return h;
+}
+function productAction(a, d){
+  switch (a){
+    case 'weekPlanBuild': if (planBusy) return true; planBusy = true; planMsg = ''; renderProgram(); buildWeekPlan(true).then(r => { planBusy = false; renderProgram(); toast(r.source === 'ai' ? 'Haftalık plan yenilendi (yapay zekâ)' : 'Haftalık plan yenilendi'); }); return true;
+    case 'weekDay': openSheet(weekDaySheet(d.date)); return true;
+    case 'menuAddDate': { const menu = S.menus[d.date], m = menu && menu.meals.find(x => x.key === d.k); if (!m) return true; nutDate = d.date; nutMeal = d.k; m.items.forEach(it => addFood(Object.assign({}, it, { src:'menu' }))); toast(MEALS[d.k] + ' menüsü günlüğe eklendi'); closeSheet(); go('beslenme'); return true; }
   }
   return false;
 }
 /* ===== UYGULAMA ===== */
 const KEY = 'demir-defteri-v1';
-const VIEWS = ['bugun','beslenme','program','antrenman','gecmis','ayarlar'];
+const VIEWS = ['bugun','beslenme','program','antrenman','gecmis','ayarlar','giris','kurulum'];
 const TABS = [['bugun','Bugün','home'],['beslenme','Beslenme','food'],['program','Program','cal'],['antrenman','Antrenman','dumb'],['gecmis','Geçmiş','chart']];
 const I = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICON = {
@@ -1469,7 +1766,7 @@ const DEFAULT_PLAN = [{ key:'kahvalti', time:'08:00', pct:25 }, { key:'ara1', ti
 const toMin = t => { const a = String(t || '0:0').split(':').map(Number); return (a[0] || 0) * 60 + (a[1] || 0); };
 const nowMinutes = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 const EQUIP_LABEL = { barbell:'Halter', dumbbell:'Dumbbell', machine:'Makine', cable:'Kablo', bodyweight:'Vücut ağırlığı' };
-const DEFAULT_PROFILE = { name:'', sex:'e', age:40, height:178, weight:82, activity:2, goal:'maintain', style:'modern', split:'full', days:3, equip:'gym', kcalOverride:0, restSound:true, vibrate:true, restNotify:true, mealAlert:true, mealPrefs:'', apiKey:'', apiModel:'claude-sonnet-5-5', apiModelQuick:'claude-haiku-5-5', musicUrl:'' };
+const DEFAULT_PROFILE = { name:'', sex:'e', age:40, height:178, weight:82, activity:2, goal:'maintain', style:'modern', split:'full', days:3, equip:'gym', kcalOverride:0, restSound:true, vibrate:true, restNotify:true, keys:{}, models:{}, aiProvider:'', experience:'yeni', diet:'normal', mealCount:5, allergies:'', dislikes:'', targetWeight:0, mealAlert:true, mealPrefs:'', apiKey:'', apiModel:'claude-sonnet-5-5', apiModelQuick:'claude-haiku-5-5', musicUrl:'' };
 const yt = q => 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
 const $ = (s, r) => (r || document).querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -1480,6 +1777,8 @@ function fresh(){ const p = Object.assign({}, DEFAULT_PROFILE); return { version
 function normalize(d){
   if (!d || d.version !== 1 || !d.profile) return null;
   d.profile = Object.assign({}, DEFAULT_PROFILE, d.profile);
+  d.profile.keys = Object.assign({}, d.profile.keys || {}); if (d.profile.apiKey){ if (!d.profile.keys.anthropic) d.profile.keys.anthropic = d.profile.apiKey; delete d.profile.apiKey; }
+  d.profile.models = Object.assign({}, d.profile.models || {}); d.guest = !!d.guest; d.skipSetup = !!d.skipSetup; d.weekPlan = d.weekPlan && Array.isArray(d.weekPlan.days) ? d.weekPlan : null;
   if (!SPLITS[d.profile.split]) d.profile.split = 'full';
   if (!EQUIP_MODES[d.profile.equip]) d.profile.equip = 'gym';
   if (!d.program || !d.program.workouts) d.program = buildProgram(d.profile.style, d.profile.days, d.profile.equip, d.profile.split);
@@ -1530,17 +1829,22 @@ function closeSheet(){ $('#sheet').hidden = true; $('#sheetPanel').innerHTML = '
 function go(view){ if (location.hash !== '#' + view) location.hash = '#' + view; else route(); }
 function route(){
   let h = (location.hash || '').replace('#', '');
+  if (/access_token=|type=recovery|error_description=/.test(h)) h = 'giris'; // Supabase şifre sıfırlama linki
+  if (needLogin()) h = 'giris';
+  else if (h === 'giris') h = S.profileSet || S.skipSetup ? 'bugun' : 'kurulum';
+  else if (!S.profileSet && !S.skipSetup && h !== 'kurulum' && h !== 'ayarlar') h = 'kurulum';
   if (!VIEWS.includes(h)) h = 'bugun';
   current = h; confirmKey = null;
   VIEWS.forEach(v => { $('#view-' + v).hidden = v !== h; });
+  document.body.classList.toggle('bare', bareView(h));
   renderTabs();
   render();
   if (lastView !== h) window.scrollTo(0, 0);
   lastView = h;
 }
 function renderTabs(){ $('#tabs').innerHTML = TABS.map(t => `<button class="tab${current === t[0] ? ' on' : ''}" data-nav="${t[0]}"><span class="tab-ic">${ICON[t[2]]}</span>${t[1]}</button>`).join(''); }
-function render(){ ({ bugun:renderToday, beslenme:renderNutrition, program:renderProgram, antrenman:renderWorkout, gecmis:renderHistory, ayarlar:renderSettings })[current](); }
-function renderAiBadge(){ const b = $('#aiBadge'); b.className = 'chip ' + (aiState === 'ready' ? 'good' : aiState === 'none' ? '' : 'pulse'); b.textContent = aiState === 'ready' ? 'Claude ✓' : aiState === 'none' ? 'Claude –' : 'Claude …'; b.title = aiState === 'ready' ? 'Claude bağlı: kalori tahmini ve koç yorumu aktif' : aiState === 'none' ? 'Bu görünümde Claude bağlantısı yok' : 'Bağlantı kontrol ediliyor'; }
+function render(){ ({ bugun:renderToday, beslenme:renderNutrition, program:renderProgram, antrenman:renderWorkout, gecmis:renderHistory, ayarlar:renderSettings, giris:renderAuth, kurulum:renderSetup })[current](); }
+function renderAiBadge(){ const b = $('#aiBadge'), n = aiLabel(); b.className = 'chip ' + (aiState === 'ready' ? 'good' : aiState === 'none' ? '' : 'pulse'); b.textContent = aiState === 'ready' ? n + ' ✓' : aiState === 'none' ? 'AI –' : n + ' …'; b.title = aiState === 'ready' ? n + ' bağlı: kalori tahmini, menü ve koç yorumu aktif' : aiState === 'none' ? 'Yapay zekâ bağlı değil (Ayarlar → Yapay zekâ)' : 'Bağlanıyor…'; }
 
 /* --- Yetenekler: claude.ai içinde artifact runtime; dışarıda (GitHub Pages / yerel) kullanıcının kendi API anahtarı --- */
 const inClaudeApp = () => !!(window.claude && typeof window.claude.use === 'function');
@@ -1554,34 +1858,12 @@ function parseJsonLoose(text){
 function shrinkImage(file){
   return new Promise(res => { try { const img = new Image(); const url = URL.createObjectURL(file); img.onload = () => { try { const sc = Math.min(1, 1400 / Math.max(img.width, img.height, 1)); const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc)); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); res({ data: c.toDataURL('image/jpeg', 0.85).split(',')[1], type: 'image/jpeg' }); } catch (e) { res(null); } URL.revokeObjectURL(url); }; img.onerror = () => { URL.revokeObjectURL(url); res(null); }; img.src = url; } catch (e) { res(null); } });
 }
-function apiShim(){
-  const call = async (prompt, opts, wantJson) => {
-    opts = opts || {};
-    const key = (S.profile.apiKey || '').trim(); if (!key) throw { code:'not_granted', message:'API anahtarı yok' };
-    const content = [];
-    if (opts.images){ const imgs = Array.isArray(opts.images) ? opts.images : [opts.images]; for (const f of imgs){ const im = await shrinkImage(f); if (!im) throw { code:'image_rejected', message:'görsel okunamadı' }; content.push({ type:'image', source:{ type:'base64', media_type: im.type, data: im.data } }); } }
-    content.push({ type:'text', text: prompt });
-    const model = opts.modelTier === 'quick' ? (S.profile.apiModelQuick || 'claude-haiku-5-5') : (S.profile.apiModel || 'claude-sonnet-5-5');
-    let res;
-    try { res = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{ 'content-type':'application/json', 'x-api-key': key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' }, body: JSON.stringify({ model, max_tokens: 1500, messages:[{ role:'user', content }] }), signal: opts.signal }); }
-    catch (e) { throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'upstream_error', message: String(e) }; }
-    if (!res.ok){ let msg = ''; try { msg = (await res.json()).error.message; } catch (e) {} throw { code: res.status === 401 || res.status === 403 ? 'bad_key' : res.status === 429 ? 'rate_limited' : 'upstream_error', message: msg || ('HTTP ' + res.status) }; }
-    const data = await res.json(); const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    if (!text.trim()) throw { code:'empty_completion', message:'boş yanıt' };
-    if (typeof opts.onText === 'function'){ try { opts.onText({ text, delta: text }); } catch (e) {} }
-    if (!wantJson) return { text, truncated: data.stop_reason === 'max_tokens', modelTierApplied: opts.modelTier || 'default' };
-    const v = parseJsonLoose(text); if (v === undefined) throw { code:'invalid_json', message:'JSON yok', text }; return v;
-  };
-  const fn = (p, o) => call(p, o, false); fn.json = (p, o) => call(p, o, true);
-  fn.limits = async () => ({ maxPromptBytes: 262144, images: { maxCount: 4, maxInputBytes: 20000000, mediaTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] } });
-  return fn;
-}
 async function initCaps(){
   if (inClaudeApp()){
     const res = await Promise.all([window.claude.use('sample').catch(() => null), window.claude.use('downloads').catch(() => null)]);
     AI = res[0]; DL = res[1];
-  } else if ((S.profile.apiKey || '').trim()){
-    AI = apiShim(); DL = null;
+  } else if (aiAvailableOutside()){
+    AI = providerShim(); DL = null;
   } else { AI = null; DL = null; }
   aiState = AI ? 'ready' : 'none';
   if (AI && AI.limits){ try { const lim = await AI.limits(); aiImages = !!(lim && lim.images); if (aiImages && lim.images.mediaTypes) aiAccept = lim.images.mediaTypes.join(','); } catch (e) { aiImages = false; } }
@@ -1758,7 +2040,7 @@ async function aiEstimate(){
   } catch (e) {
     const code = e && e.code;
     aiMsgKind = 'bad';
-    aiMsg = code === 'cancelled' ? '' : code === 'not_granted' ? 'Claude kullanımına izin verilmedi. Sayfanın izinler menüsünden açabilirsin.' : code === 'rate_limited' ? 'Şu an çok istek var; biraz sonra tekrar dene.' : code === 'invalid_json' ? 'Claude düzgün bir sonuç veremedi, tekrar dene veya öğünü daha net yaz.' : code === 'refused' ? 'Claude bu isteği yanıtlamadı; öğünü farklı ifade et.' : code === 'image_rejected' || code === 'images_unavailable' ? 'Fotoğraf kabul edilmedi; başka bir fotoğraf dene veya metinle yaz.' : code === 'bad_key' ? 'API anahtarı reddedildi (401). Ayarlar\'dan anahtarı kontrol et.' : 'Bağlantı hatası, tekrar dene.' + (e && e.message ? ' (' + String(e.message).slice(0, 80) + ')' : '');
+    aiMsg = code === 'invalid_json' ? 'Yapay zekâ düzgün bir sonuç veremedi, tekrar dene veya öğünü daha net yaz.' : code === 'refused' ? 'Bu istek yanıtlanmadı; öğünü farklı ifade et.' : ['cancelled','not_granted','rate_limited','bad_key','no_credit','no_vision','network'].includes(code) ? aiErrText(code, e) : code === 'image_rejected' || code === 'images_unavailable' ? 'Fotoğraf kabul edilmedi; başka bir fotoğraf dene veya metinle yaz.' : code === 'bad_key' ? 'API anahtarı reddedildi (401). Ayarlar\'dan anahtarı kontrol et.' : 'Bağlantı hatası, tekrar dene.' + (e && e.message ? ' (' + String(e.message).slice(0, 80) + ')' : '');
     if (code === 'not_granted' || code === 'sampling_disabled'){ AI = null; aiState = 'none'; renderAiBadge(); }
   }
   aiBusy = false; aiCtl = null; renderNutrition();
@@ -1782,7 +2064,7 @@ Kullanılacak key değerleri: ${mt.map(m => m.key).join(', ')}.`;
     save();
   } catch (e) {
     const code = e && e.code;
-    menuMsg = code === 'cancelled' ? '' : code === 'not_granted' ? 'Claude kullanımına izin verilmedi.' : code === 'rate_limited' ? 'Şu an çok istek var; biraz sonra tekrar dene.' : code === 'invalid_json' ? 'Menü düzgün gelmedi, tekrar dene.' : code === 'bad_key' ? 'API anahtarı reddedildi (401). Ayarlar\'dan kontrol et.' : 'Menü alınamadı, tekrar dene.';
+    menuMsg = code === 'invalid_json' ? 'Menü düzgün gelmedi, tekrar dene.' : aiErrText(code, e) || 'Menü alınamadı, tekrar dene.'; if (code === 'cancelled') menuMsg = '';
     if (code === 'not_granted' || code === 'sampling_disabled'){ AI = null; aiState = 'none'; renderAiBadge(); }
   }
   menuBusy = false; aiCtl = null; renderNutrition();
@@ -1796,6 +2078,7 @@ function renderProgram(){
   const pr = S.program, era = ERAS[pr.style];
   const split = pr.split || 'full';
   let h = `<div><p class="label">Haftalık program</p><h1>${SPLITS[split]} · ${era.name}</h1></div>`;
+  h += weekPlanCard();
   h += `<div class="card"><div class="seg"><button class="${pr.style === 'old' ? 'on' : ''}" data-action="style" data-k="old">Old School</button><button class="${pr.style === 'modern' ? 'on' : ''}" data-action="style" data-k="modern">Modern</button></div><div class="era"><span class="yrs">${era.years} · ${esc(era.who)}</span><p class="small">${esc(era.summary)}</p></div><div class="field"><span class="label">Bölünme</span><div class="seg seg-5">${Object.entries(SPLITS).map(([k, v]) => `<button class="${split === k ? 'on' : ''}" data-action="split" data-k="${k}">${v}</button>`).join('')}</div></div><div class="stack-sm"><div class="field"><span class="label">Haftada</span><div class="seg">${SPLIT_DAYS[split].map(n => `<button class="${pr.days === n ? 'on' : ''}" data-action="days" data-k="${n}">${n} gün</button>`).join('')}</div></div><div class="field"><span class="label">Ekipman</span><div class="seg"><button class="${pr.equip === 'gym' || !pr.equip ? 'on' : ''}" data-action="equip" data-k="gym">Serbest</button><button class="${pr.equip === 'machine' ? 'on' : ''}" data-action="equip" data-k="machine">Makine</button><button class="${pr.equip === 'home' ? 'on' : ''}" data-action="equip" data-k="home">Ev</button></div></div></div>${pr.equip === 'home' ? '<p class="hint">Ev modu: halter/makine hareketleri dumbbell ve vücut ağırlığı versiyonlarıyla değiştirildi.</p>' : pr.equip === 'machine' ? '<p class="hint">Makine modu: squat → hack squat, bench → göğüs press makinesi, barfiks → destekli barfiks, curl → preacher makinesi vb. Her hareketi karttan tekrar serbest ağırlığa çevirebilirsin.</p>' : '<p class="hint">Serbest ağırlık modu: ana hareketler halter, yardımcılar makine/kablo/dumbbell karışık. Harekete dokunup "değiştir" ile makine versiyonunu seçebilirsin.</p>'}</div>`;
   h += `<div class="card"><p class="label">Bu hafta</p>${weekStrip(today())}<p class="hint">Antrenman günleri: ${pr.schedule.map(d => DAYS_SHORT[d]).join(', ')}. Gün kayarsa sorun değil: haftada ${pr.days} antrenman ve aralarda en az bir gün dinlenme yeter.</p></div>`;
   h += `<p class="hint">${split === 'full' ? 'Her antrenman tüm vücut: haftada ' + pr.days + ' gün, aralarda dinlenme.' : split === 'ul' ? 'Üst ve alt vücut dönüşümlü: ' + (pr.days === 2 ? 'haftada bir üst, bir alt gün.' : 'haftada iki üst, iki alt gün (A ve B varyasyonları).') : 'İtme (göğüs-omuz-triceps), çekme (sırt-biceps), bacak: ' + (pr.days === 3 ? 'haftada birer kez.' : 'haftada ikişer kez (A ve B).')} Bir harekete dokun: video, animasyon, kas haritası ve nasıl yapılır açılır.</p>`;
@@ -2159,7 +2442,7 @@ async function aiFeedback(){
   try {
     const r = await AI(prompt, { modelTier: 'quick', signal: aiCtl.signal, cache: false, onText: u => { aiFb = u.text; const o = out(); if (o){ o.textContent = u.text; o.classList.remove('pulse'); } } });
     aiFb = r.text;
-  } catch (e) { aiFb = (e && e.text) || (e && e.code === 'cancelled' ? '' : e && e.code === 'bad_key' ? 'API anahtarı reddedildi (401).' : 'Claude yorumu alınamadı.'); }
+  } catch (e) { aiFb = (e && e.text) || (e && e.code === 'cancelled' ? '' : aiErrText(e && e.code, e) || 'Koç yorumu alınamadı.'); }
   aiBusy = false; aiCtl = null; if (S.session) openSummary();
 }
 
@@ -2188,17 +2471,36 @@ function renderHistory(){
 }
 
 /* ===== AYARLAR ===== */
+function accountCard(){
+  if (!sbCanRun()) return '';
+  if (sbUser) return `<div class="card"><div class="row between nowrap"><div><p class="label">Hesap</p><b class="ellipsis" style="display:block">${esc(sbUser.email || '')}</b><span class="small muted">${sbLast ? 'Eşitlendi ' + new Date(sbLast).toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' }) : 'Bulutla eşitleniyor'}</span></div><button class="btn btn-sm" data-action="sbLogout">Çıkış</button></div></div>`;
+  if (S.guest && sbConfigured()) return `<div class="card"><div class="row between nowrap"><div><p class="label">Hesap</p><b>Misafir (yalnız bu cihaz)</b><span class="small muted" style="display:block">Hesap açarsan veriler buluta yedeklenir ve diğer cihazlarında açılır.</span></div><button class="btn btn-sm btn-primary" data-action="authGo">Giriş / Kayıt</button></div></div>`;
+  return '';
+}
+function aiCard(){
+  if (inClaudeApp()) return '';
+  const p = S.profile, proxy = aiProxyUrl(), cur = PROVIDERS[p.aiProvider] ? p.aiProvider : APP.aiProvider, P = PROVIDERS[cur];
+  let h = `<div class="card"><h3>Yapay zekâ</h3>`;
+  if (proxy) h += `<p class="hint">${sbUser ? 'Sunucu üzerinden çalışıyor: anahtar girmen gerekmez, kullanım hesabına günlük sınırla yazılır.' : 'Sunucu üzerinden çalışır; giriş yapınca aktif olur.'}</p>`;
+  h += `<p class="hint">${proxy ? 'İstersen kendi anahtarınla da kullanabilirsin:' : 'Kalori tahmini, fotoğraf okuma, haftalık menü ve koç yorumu için bir sağlayıcı seç ve API anahtarını gir. Anahtar yalnızca bu cihazda saklanır (yedeğe ve buluta yazılmaz); ücret sağlayıcı hesabından düşer.'}</p>`;
+  h += `<div class="grid2"><div class="field"><span class="label">Sağlayıcı</span><select id="aiProv" class="input">${Object.entries(PROVIDERS).map(([k, v]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${v.name}${p.keys[k] ? ' ✓' : ''}</option>`).join('')}</select></div><div class="field"><span class="label">Model (boş = ${esc(P.model)})</span><input id="aiModel" class="input" value="${esc((p.models || {})[cur] || '')}" placeholder="${esc(P.model)}"></div><div class="field" style="grid-column:1/-1"><span class="label">${esc(P.name)} API anahtarı</span><input id="aiKey" class="input" type="password" autocomplete="off" value="${esc(p.keys[cur] || '')}" placeholder="${esc(P.hint)}"></div></div>`;
+  h += `<p class="hint">${cur === 'deepseek' ? 'DeepSeek en ucuz seçenek; fotoğraf okuyamaz (fotoğraf için ek OpenAI veya Claude anahtarı girersen o kullanılır). Anahtar: platform.deepseek.com → API keys.' : cur === 'openai' ? 'OpenAI metin + fotoğraf. Anahtar: platform.openai.com → API keys.' : 'Claude metin + fotoğraf. Anahtar: console.anthropic.com → API keys.'}</p>`;
+  h += `<div class="row"><button class="btn btn-primary" data-action="aiSave">${ICON.check} Kaydet</button><button class="btn" data-action="aiTest" ${aiState === 'ready' ? '' : 'disabled'}>Bağlantıyı dene</button></div>${aiTestMsg ? `<p class="hint ${/çalışıyor/.test(aiTestMsg) ? 'good' : 'bad'}">${esc(aiTestMsg)}</p>` : ''}</div>`;
+  return h;
+}
+let aiTestMsg = '';
 function renderSettings(){
   const p = S.profile, tg = targets(p);
   const sel = (id, opts, val) => `<select id="${id}" class="input">${Object.entries(opts).map(([k, v]) => `<option value="${k}"${String(val) === String(k) ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
   let h = `<div><p class="label">Ayarlar</p><h1>Profil ve hedefler</h1></div>`;
+  h += accountCard();
   h += `<div class="card"><h3>Profil</h3><div class="grid2"><div class="field" style="grid-column:1/-1"><span class="label">Ad (isteğe bağlı)</span><input id="pName" class="input" value="${esc(p.name)}" placeholder="Adın"></div><div class="field"><span class="label">Cinsiyet</span>${sel('pSex', { e: 'Erkek', k: 'Kadın' }, p.sex)}</div><div class="field"><span class="label">Yaş</span><input id="pAge" class="input" type="number" inputmode="numeric" value="${p.age}"></div><div class="field"><span class="label">Boy (cm)</span><input id="pHeight" class="input" type="number" inputmode="numeric" value="${p.height}"></div><div class="field"><span class="label">Kilo (kg)</span><input id="pWeight" class="input" type="number" inputmode="decimal" step="0.1" value="${p.weight}"></div><div class="field" style="grid-column:1/-1"><span class="label">Aktivite</span>${sel('pActivity', ACTIVITY_LABEL, p.activity)}</div><div class="field" style="grid-column:1/-1"><span class="label">Hedef</span>${sel('pGoal', GOAL_LABEL, p.goal)}</div></div><h3>Antrenman</h3><div class="grid2"><div class="field"><span class="label">Tarz</span>${sel('pStyle', { old: 'Old School', modern: 'Modern' }, p.style)}</div><div class="field"><span class="label">Bölünme</span>${sel('pSplit', SPLITS, p.split || 'full')}</div><div class="field"><span class="label">Haftada</span>${sel('pDays', { 2: '2 gün', 3: '3 gün', 4: '4 gün', 6: '6 gün' }, p.days)}</div><div class="field"><span class="label">Ekipman</span>${sel('pEquip', EQUIP_MODES, p.equip)}</div><div class="field"><span class="label">Kalori hedefi (elle, 0 = otomatik)</span><input id="pKcal" class="input" type="number" inputmode="numeric" value="${p.kcalOverride || ''}" placeholder="otomatik ${tg.kcal}"></div></div><div class="row"><label class="row" style="gap:6px"><input id="pSound" type="checkbox" ${p.restSound ? 'checked' : ''}> Dinlenme bitince ses</label><label class="row" style="gap:6px"><input id="pVibe" type="checkbox" ${p.vibrate ? 'checked' : ''}> Titreşim</label>${inClaudeApp() ? '' : `<label class="row" style="gap:6px"><input id="pNotify" type="checkbox" ${p.restNotify ? 'checked' : ''}> Bildirim (kilit ekranı)</label>`}<button class="btn btn-sm" data-action="testAlarm">Alarmı dene</button></div><p class="hint">Alarm, set tamamlandığı anda ses motoruna kurulur; telefon elinde değilken de zamanında çalar (son 3 saniyede tık sesi verir). Ekran kapalıyken en güvenilir yol bildirimdir; iPhone'da sayfa arkadayken ses gecikebilir.</p><button class="btn btn-primary btn-block" data-action="saveProfile">${ICON.check} Kaydet</button><p class="hint">Tarz, bölünme, gün sayısı veya ekipman değişirse program yeniden oluşturulur (Full Body 2/3/4, Üst-Alt 2/4, İtme-Çekme-Bacak 3/6 gün); antrenman geçmişin silinmez.</p></div>`;
   h += `<div class="card"><h3>Öğün planı ve saatler</h3><p class="hint">Hedef kalori öğünlere yüzdeyle dağıtılır; saatler "sırada" işaretini ve sayfa açıkken öğün uyarısını belirler.</p><div class="list">${S.mealPlan.map((m, i) => `<div class="item"><span style="width:64px;font-weight:600;flex:none">${MEALS[m.key]}</span><input class="input" type="time" value="${m.time}" data-plan="${i}" data-k="time" style="width:112px;flex:none" aria-label="${MEALS[m.key]} saati"><input class="input" type="number" inputmode="numeric" min="0" max="100" value="${m.pct}" data-plan="${i}" data-k="pct" style="width:68px;flex:none;text-align:right" aria-label="${MEALS[m.key]} yüzdesi"><span class="small muted">%</span><span class="small muted grow right">~${mealTargets()[i].kcal} kcal</span></div>`).join('')}</div><label class="row" style="gap:6px"><input id="pMealAlert" type="checkbox" ${p.mealAlert ? 'checked' : ''}> Sayfa açıkken öğün saatinde uyar (ses + bildirim)</label><div class="row"><button class="btn btn-primary" data-action="savePlan">${ICON.check} Planı kaydet</button><button class="btn btn-ghost" data-action="resetPlan">Varsayılana dön</button></div><p class="hint">Sayfa kapalıyken web sayfası alarm çalamaz; gerçek alarm için aynı saatleri telefonunun Hatırlatıcılar uygulamasına ekle.</p></div>`;
   h += `<div class="card"><h3>Hesaplanan hedefler</h3><div class="kv"><b>Bazal metabolizma</b><span>${fmtK(tg.bmr)} kcal (Mifflin-St Jeor)</span><b>Günlük harcama</b><span>${fmtK(tg.tdee)} kcal</span><b>Hedef</b><span>${fmtK(tg.kcal)} kcal${p.kcalOverride ? ' (elle)' : ' (' + GOAL_LABEL[p.goal] + ')'}</span><b>Protein</b><span>${tg.prot} g (${p.goal === 'cut' ? '2,2' : '1,8'} g/kg)</span><b>Karbonhidrat</b><span>${tg.carb} g</span><b>Yağ</b><span>${tg.fat} g (%25)</span></div></div>`;
   h += `<div class="card"><h3>Yedek (JSON)</h3><p class="hint">Veriler bu tarayıcıda, yerel depolamada tutulur. Telefon veya tarayıcı değişince JSON ile taşırsın.${S.lastExport ? ' Son yedek: ' + new Date(S.lastExport).toLocaleString('tr-TR') : ' Henüz yedek alınmadı.'}</p><div class="row"><button class="btn btn-primary" data-action="exportJson">${ICON.down} JSON indir</button><button class="btn" data-action="copyJson">Kopyala</button></div>${exportText ? `<textarea id="expText" class="input pre" readonly style="min-height:110px">${esc(exportText)}</textarea><p class="hint">İndirme bu görünümde çalışmıyorsa metni seçip bir .json dosyasına yapıştır.</p>` : ''}<hr class="sep"><p class="label">Geri yükle</p><input id="impFile" class="input" type="file" accept=".json,application/json"><textarea id="impText" class="input pre" placeholder="…veya JSON metnini buraya yapıştır" style="min-height:70px"></textarea><button class="btn" data-action="importText">${ICON.up} Metinden yükle</button>${pendingImport ? `<div class="confirm"><span>Yedek bulundu: ${pendingImport.workouts.length} antrenman, ${Object.keys(pendingImport.foods).length} gün beslenme, ${pendingImport.weights.length} kilo kaydı. <b>Mevcut veriler üzerine yazılacak.</b></span><div class="row nowrap"><button class="btn btn-danger btn-sm" data-action="importConfirm">Evet, geri yükle</button><button class="btn btn-sm" data-action="cancelImport">Vazgeç</button></div></div>` : ''}</div>`;
   h += sbCard();
-  if (!inClaudeApp()) h += `<div class="card"><h3>Claude API anahtarı</h3><p class="hint">Bu sayfa claude.ai dışında çalışıyor. Yapay zeka özellikleri (metin ve fotoğraftan kalori, menü önerisi, koç yorumu) için kendi Anthropic API anahtarını gir. Anahtar yalnızca bu tarayıcının yerel depolamasında kalır, JSON yedeğe yazılmaz; ortak bilgisayarda girme. Kullanım ücreti Anthropic hesabından düşer.</p><div class="field"><span class="label">API anahtarı</span><input id="pApiKey" class="input" type="password" autocomplete="off" value="${esc(p.apiKey || '')}" placeholder="sk-ant-…"></div><div class="grid2"><div class="field"><span class="label">Hızlı model (metin)</span><input id="pApiQuick" class="input" value="${esc(p.apiModelQuick || '')}"></div><div class="field"><span class="label">Model (fotoğraf, menü)</span><input id="pApiModel" class="input" value="${esc(p.apiModel || '')}"></div></div><div class="row"><button class="btn btn-primary" data-action="saveApi">${ICON.check} Kaydet ve bağlan</button>${p.apiKey ? `<button class="btn btn-ghost" data-action="clearApi">Anahtarı sil</button>` : ''}</div></div>`;
-  h += `<div class="card"><h3>Claude</h3><p class="hint">${aiState === 'ready' ? 'Bağlı. Beslenme sekmesinde yazdığın öğünleri (ve ' + (aiImages ? 'çektiğin fotoğrafları' : 'metinleri') + ') Claude gramlara, kaloriye ve makrolara böler, günlük menü önerir; antrenman sonunda koç yorumu verir. Her istek senin Claude kullanımından düşer; ilk kullanımda izin sorulur.' : aiState === 'none' ? (inClaudeApp() ? 'Bu görünümde Claude bağlantısı yok. Sayfayı claude.ai içinden açtığında bağlanır.' : 'Bağlı değil: claude.ai dışında yapay zeka için yukarıya API anahtarı gir. Besin listesi, elle giriş, program ve antrenman modu anahtarsız da çalışır.') : 'Bağlantı kontrol ediliyor…'}</p></div>`;
+  h += aiCard();
+  h += `<div class="card"><h3>Yapay zekâ durumu</h3><p class="hint">${aiState === 'ready' ? aiLabel() + ' bağlı. Beslenme sekmesinde yazdığın öğünleri' + (aiImages ? ' ve çektiğin fotoğrafları' : '') + ' gramlara, kaloriye ve makrolara böler; haftalık menü ve antrenman sonrası koç yorumu üretir.' : (inClaudeApp() ? 'Bu görünümde Claude bağlantısı yok; sayfayı claude.ai içinden açtığında bağlanır.' : 'Bağlı değil: yukarıdaki Yapay zekâ kartından sağlayıcı ve anahtar gir. Besin listesi, elle giriş, program, antrenman modu ve veritabanı menüsü anahtarsız da çalışır.')}</p></div>`;
   h += `<div class="card"><h3>Tehlikeli bölge</h3>${confirmKey === 'wipe' ? `<div class="confirm"><span>Tüm profil, beslenme ve antrenman kayıtları silinecek. Önce yedek aldın mı?</span><div class="row nowrap"><button class="btn btn-danger btn-sm" data-action="wipeYes">Evet, hepsini sil</button><button class="btn btn-sm" data-action="cancelConfirm">Vazgeç</button></div></div>` : `<button class="btn btn-danger" data-action="wipe">Tüm verileri sil</button>`}</div>`;
   $('#view-ayarlar').innerHTML = h;
 }
@@ -2215,7 +2517,7 @@ function saveProfile(){
   if (regen){ S.program = buildProgram(p.style, p.days, p.equip, p.split); p.days = S.program.days; }
   save(); renderSettings(); toast(regen ? 'Profil kaydedildi, program yeniden oluşturuldu' : 'Profil kaydedildi');
 }
-function exportData(){ const d = JSON.parse(JSON.stringify(S)); delete d.profile.apiKey; return JSON.stringify(d, null, 2); }
+function exportData(){ const d = JSON.parse(JSON.stringify(S)); delete d.profile.apiKey; delete d.profile.keys; return JSON.stringify(d, null, 2); }
 async function exportJson(){
   const json = exportData(), name = 'demir-defteri-' + today() + '.json';
   const mark = () => { S.lastExport = Date.now(); save(); };
@@ -2246,6 +2548,9 @@ document.addEventListener('click', ev => {
   const a = el.dataset.action, d = el.dataset, ses = S.session;
   const num = (k) => +d[k];
   if (a.startsWith('sb') && sbAction(a)) return;
+  if (a.startsWith('auth') && authAction(a, d)) return;
+  if (a.startsWith('wiz') && wizAction(a)) return;
+  if (productAction(a, d)) return;
   switch (a){
     case 'closeSheet': closeSheet(); break;
     case 'cancelConfirm': confirmKey = null; render(); break;
@@ -2284,6 +2589,9 @@ document.addEventListener('click', ev => {
     case 'quick': startQuick(num('i')); break;
     case 'musicPlay': { if (!mq.queue.length || mq.queue.indexOf(d.id) < 0) buildQueue(d.id); mq.index = mq.queue.indexOf(d.id); playTrack(d.id); break; }
     case 'musicToggle': togglePlay(); break;
+    case 'authGo': S.guest = false; save(); go('giris'); break;
+    case 'aiSave': { const prov = ($('#aiProv') || {}).value; if (PROVIDERS[prov]) S.profile.aiProvider = prov; const k = (($('#aiKey') || {}).value || '').trim(); S.profile.keys[S.profile.aiProvider] = k; const mdl = (($('#aiModel') || {}).value || '').trim(); S.profile.models[S.profile.aiProvider] = mdl.slice(0, 60); aiTestMsg = ''; save(); initCaps().then(() => { renderSettings(); toast(k ? PROVIDERS[S.profile.aiProvider].name + ' kaydedildi' : 'Anahtar kaldırıldı'); }); break; }
+    case 'aiTest': { if (!AI) break; aiTestMsg = 'Deneniyor…'; renderSettings(); AI('Sadece "tamam" yaz.', { modelTier:'quick', cache:false }).then(r => { aiTestMsg = 'Bağlantı çalışıyor: ' + (r.text || '').slice(0, 40); }).catch(e => { aiTestMsg = aiErrText(e && e.code, e) || ('Hata: ' + (e && e.message)); }).then(() => renderSettings()); break; }
     case 'radioPreset': radio.preset = d.id; radio.q = ''; radioLoad(); break;
     case 'radioSearch': { radio.q = (($('#radioQ') || {}).value || '').trim().slice(0, 60); radioLoad(); break; }
     case 'radioPlay': { const st = radioList().find(x => x.uuid === d.id); if (st) playRadio(st); break; }
@@ -2323,12 +2631,12 @@ document.addEventListener('click', ev => {
     case 'exportJson': exportJson(); break;
     case 'copyJson': copyJson(); break;
     case 'importText': tryImport(($('#impText') || {}).value || ''); break;
-    case 'importConfirm': if (pendingImport){ const keep = S.profile.apiKey; S = pendingImport; if (keep && !S.profile.apiKey) S.profile.apiKey = keep; pendingImport = null; save(); initCaps(); toast('Yedek geri yüklendi'); go('bugun'); } break;
+    case 'importConfirm': if (pendingImport){ const keep = S.profile.keys, g = S.guest; S = pendingImport; S.profile.keys = Object.assign({}, keep, S.profile.keys || {}); S.guest = g; pendingImport = null; save(); initCaps(); toast('Yedek geri yüklendi'); go('bugun'); } break;
     case 'cancelImport': pendingImport = null; renderSettings(); break;
     case 'saveApi': { S.profile.apiKey = (($('#pApiKey') || {}).value || '').trim(); S.profile.apiModelQuick = (($('#pApiQuick') || {}).value || '').trim() || 'claude-haiku-5-5'; S.profile.apiModel = (($('#pApiModel') || {}).value || '').trim() || 'claude-sonnet-5-5'; save(); aiState = 'wait'; renderAiBadge(); initCaps().then(() => { renderSettings(); toast(S.profile.apiKey ? 'API anahtarı kaydedildi' : 'Anahtar boş'); }); break; }
     case 'clearApi': S.profile.apiKey = ''; save(); initCaps().then(() => { renderSettings(); toast('Anahtar silindi'); }); break;
     case 'wipe': confirmKey = 'wipe'; renderSettings(); break;
-    case 'wipeYes': if (sbOn()) sbSignOut(true); S = fresh(); confirmKey = null; pendingItems = null; exportText = ''; save(); toast('Bu cihazdaki veriler silindi'); go('bugun'); break;
+    case 'wipeYes': if (sbOn()) sbSignOut(true); S = fresh(); S.skipSetup = true; confirmKey = null; pendingItems = null; exportText = ''; save(); toast('Bu cihazdaki veriler silindi'); go('bugun'); break;
   }
 });
 document.addEventListener('input', ev => {
@@ -2345,6 +2653,7 @@ document.addEventListener('change', ev => {
     else it.kcal = Math.round(v);
     renderNutrition();
   } else if (t.id === 'pickGIn'){ pickG = Math.max(0, parseFloat(t.value) || 0); renderNutrition(); }
+  else if (t.id === 'aiProv'){ if (PROVIDERS[t.value]){ S.profile.aiProvider = t.value; save(); renderSettings(); } }
   else if (t.id === 'musicFiles' && t.files && t.files.length){ addMusicFiles(Array.from(t.files)).then(n => { toast(n ? n + ' parça eklendi' : 'Ses dosyası bulunamadı'); render(); }); }
   else if (t.id === 'foodPhoto' && t.files && t.files[0]){ const f = t.files[0]; photoFile = f; photoName = f.name || 'fotoğraf'; makeThumb(f).then(th => { photoThumb = th; if (current === 'beslenme') renderNutrition(); }); }
   else if (t.id === 'impFile' && t.files && t.files[0]){ const fr = new FileReader(); fr.onload = () => tryImport(String(fr.result)); fr.readAsText(t.files[0]); }
@@ -2355,6 +2664,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.addEventListener('hashchange', route);
 
 /* ===== BAŞLAT ===== */
+document.title = APP.name; { const b = document.querySelector('.brand'); if (b) b.lastChild.textContent = APP.name; }
 renderAiBadge();
 route();
 if (S.session){ startTick(); }

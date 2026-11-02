@@ -96,11 +96,29 @@ create table if not exists public.app_state (
   updated_at  timestamptz not null default now()
 );
 
+-- ---------------------------------------------------------------
+-- 6) Yapay zekâ kullanımı (Edge Function yazar; kullanıcı yalnızca kendi satırını okur)
+-- ---------------------------------------------------------------
+create table if not exists public.ai_usage (
+  user_id           uuid not null references auth.users(id) on delete cascade,
+  day               date not null,
+  calls             integer not null default 0,
+  prompt_tokens     integer not null default 0,
+  completion_tokens integer not null default 0,
+  provider          text,
+  updated_at        timestamptz not null default now(),
+  primary key (user_id, day)
+);
+alter table public.ai_usage enable row level security;
+drop policy if exists "own usage" on public.ai_usage;
+create policy "own usage" on public.ai_usage for select to authenticated using (auth.uid() = user_id);
+grant select on public.ai_usage to authenticated;
+
 -- updated_at tetikleyicileri
 do $$
 declare t text;
 begin
-  foreach t in array array['food_entries','weights','workouts','app_state'] loop
+  foreach t in array array['food_entries','weights','workouts','app_state','ai_usage'] loop
     execute format('drop trigger if exists set_updated_at on public.%I', t);
     execute format('create trigger set_updated_at before update on public.%I for each row execute function public.set_updated_at()', t);
   end loop;
