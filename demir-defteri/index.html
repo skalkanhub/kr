@@ -1268,6 +1268,172 @@ function animBox(name, cls, muscles){ const a = ANIMS[name]; if (!a) return ''; 
 function animView(name){ const a = ANIMS[name]; return a ? (a.view === 'front' ? (name === 'rearfly' ? 'arka görünüm' : 'ön görünüm') : 'yan görünüm') : ''; }
 
 if (typeof module !== 'undefined') module.exports = Object.assign(module.exports || {}, { ANIMS, poseSVG, solveSide });
+/* ===== SUPABASE EŞİTLEME =====
+   Kullanıcının kendi Supabase projesi (PostgreSQL). Yerel depolama çalışmaya devam eder (çevrimdışı dahil);
+   her kayıtta değişen satırlar tabloya yazılır, açılışta/girişte tablodan çekilir. Satır bazında son yazan kazanır;
+   bu cihazda bekleyen (henüz gönderilmemiş) satırlar çekme sırasında korunur. Tablolar: supabase.sql
+   claude.ai içinde dış ağ kapalı olduğundan bu katman yalnızca GitHub/HTML sürümünde çalışır. */
+const SB_CFG = 'demir-defteri-sb', SB_SYNCED = 'demir-defteri-synced';
+const SB_LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
+const SB_TABLES = ['food_entries', 'weights', 'workouts'];
+let sb = null, sbUser = null, sbCfg = { url: '', key: '', email: '' }, sbState = 'off', sbMsg = '', sbBusy = false, sbAuthBusy = false, sbLast = 0, sbTimer = null, sbPending = 0;
+let synced = { user: '', food_entries: {}, weights: {}, workouts: {}, app_state: '' };
+
+function sbLoadCfg(){ try { const c = JSON.parse(localStorage.getItem(SB_CFG) || 'null'); if (c && c.url) sbCfg = Object.assign(sbCfg, c); const s = JSON.parse(localStorage.getItem(SB_SYNCED) || 'null'); if (s && s.user) synced = Object.assign(synced, s); } catch (e) {} }
+function sbSaveCfg(){ try { localStorage.setItem(SB_CFG, JSON.stringify(sbCfg)); } catch (e) {} }
+function sbSaveSynced(){ try { localStorage.setItem(SB_SYNCED, JSON.stringify(synced)); } catch (e) {} }
+function sbResetSynced(user){ synced = { user: user || '', food_entries: {}, weights: {}, workouts: {}, app_state: '' }; sbSaveSynced(); }
+const sbOn = () => !!(sb && sbUser);
+const sbCanRun = () => typeof inClaudeApp === 'function' && !inClaudeApp() && /^https?:|^file:/.test(location.protocol);
+
+function sbScript(){
+  if (window.supabase && window.supabase.createClient) return Promise.resolve();
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = SB_LIB; s.async = true; s.onload = () => res(); s.onerror = () => rej(new Error('lib')); document.head.appendChild(s); });
+}
+async function sbBoot(){
+  if (!sbCanRun()) return; sbLoadCfg();
+  if (!sbCfg.url || !sbCfg.key) return;
+  sbState = 'loading'; sbMsg = '';
+  try {
+    await sbScript();
+    sb = window.supabase.createClient(sbCfg.url, sbCfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
+    sb.auth.onAuthStateChange((ev, session) => { if (ev === 'INITIAL_SESSION') return; const u = session && session.user ? session.user : null; const changed = (u && u.id) !== (sbUser && sbUser.id); sbUser = u; if (changed){ if (u){ if (synced.user !== u.id) sbResetSynced(u.id); sbSync('pull'); } else { sbState = 'ready'; } if (typeof current !== 'undefined' && current === 'ayarlar') renderSettings(); } });
+    const { data } = await sb.auth.getSession();
+    sbUser = data && data.session ? data.session.user : null; sbState = 'ready';
+    if (sbUser){ if (synced.user !== sbUser.id) sbResetSynced(sbUser.id); await sbSync('pull'); }
+  } catch (e) { sbState = 'error'; sbMsg = 'Supabase kütüphanesi yüklenemedi (internet yok?) ya da URL/anahtar hatalı.'; sb = null; }
+  if (typeof current !== 'undefined' && current === 'ayarlar') renderSettings();
+}
+async function sbConnect(url, key){
+  url = (url || '').trim().replace(/\/+$/, ''); key = (key || '').trim();
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(url) && !/^https?:\/\/.+/.test(url)) return toast('Proje URL\'si https://xxxx.supabase.co biçiminde olmalı.');
+  if (key.length < 20) return toast('anon (public) anahtarını gir.');
+  sbCfg.url = url; sbCfg.key = key; sbSaveCfg(); sb = null; sbUser = null;
+  await sbBoot(); if (sbState === 'ready') toast('Supabase bağlandı; şimdi giriş yap veya kayıt ol.');
+}
+function sbDisconnect(){ try { if (sb) sb.auth.signOut(); } catch (e) {} sb = null; sbUser = null; sbState = 'off'; sbCfg = { url: '', key: '', email: '' }; sbSaveCfg(); sbResetSynced(''); }
+async function sbSignIn(email, password, signup){
+  if (!sb) return toast('Önce URL ve anahtarla bağlan.');
+  email = (email || '').trim(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Geçerli e-posta gir.'); if ((password || '').length < 6) return toast('Şifre en az 6 karakter.');
+  sbCfg.email = email; sbAuthBusy = true; sbMsg = ''; renderSettings();
+  try {
+    const r = signup ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
+    if (r.error) throw r.error;
+    sbSaveCfg();
+    if (signup && !(r.data && r.data.session)) sbMsg = 'Kayıt alındı. E-postana gelen doğrulama linkine tıkla, sonra "Giriş yap".';
+    else toast(signup ? 'Kayıt tamam, giriş yapıldı' : 'Giriş yapıldı');
+  } catch (e) { sbMsg = /invalid login/i.test(e.message || '') ? 'E-posta veya şifre hatalı.' : /already registered/i.test(e.message || '') ? 'Bu e-posta kayıtlı; "Giriş yap".' : /email not confirmed/i.test(e.message || '') ? 'E-posta doğrulanmamış; gelen kutundaki linke tıkla.' : 'Giriş yapılamadı: ' + (e.message || e); }
+  sbAuthBusy = false; renderSettings();
+}
+async function sbSignOut(quiet){ sbUser = null; sbResetSynced(''); clearTimeout(sbTimer); try { if (sb) await sb.auth.signOut(); } catch (e) {} if (!quiet){ renderSettings(); toast('Çıkış yapıldı; veriler bu cihazda kalır.'); } }
+
+/* --- satır üreticileri: S → tablo satırları (deterministik; aynı veri aynı metin) --- */
+function sbStripProfile(p){ const q = Object.assign({}, p); delete q.apiKey; return q; }
+function sbRows(){
+  const u = sbUser.id, foods = [];
+  Object.keys(S.foods).sort().forEach(day => (S.foods[day] || []).forEach(f => foods.push({ id: f.id, user_id: u, day, meal: f.meal || null, name: f.name, grams: f.grams == null ? null : +f.grams, kcal: +f.kcal || 0, protein: +f.p || 0, carb: +f.c || 0, fat: +f.f || 0, src: f.src || null, thumb: f.thumb || null, logged_at: f.t ? new Date(f.t).toISOString() : null })));
+  const weights = S.weights.map(w => ({ id: 'w-' + w.date, user_id: u, day: w.date, kg: +w.kg }));
+  const workouts = S.workouts.map(w => ({ id: w.id, user_id: u, day: w.date, started_at: new Date(w.startedAt).toISOString(), name: w.dayName, day_key: w.dayKey || null, style: w.style, seconds: Math.round((w.duration || 0) / 1000), volume: Math.round(w.volume || 0), sets: w.sets || 0, prs: w.prs || 0, exercises: w.exercises }));
+  const state = { user_id: u, data: { profile: sbStripProfile(S.profile), profileSet: S.profileSet, program: S.program, mealPlan: S.mealPlan, menus: S.menus, mealAlerts: S.mealAlerts, music: { ytLists: S.music.ytLists, stations: S.music.stations, shuffle: S.music.shuffle, stream: S.music.stream } } };
+  return { food_entries: foods, weights, workouts, app_state: state };
+}
+function sbSetRows(w){ const rows = []; (w.exercises || []).forEach(ex => (ex.sets || []).forEach((st, i) => rows.push({ workout_id: w.id, user_id: sbUser.id, day: w.date, exercise_id: ex.exId, exercise_name: (EX[ex.exId] || {}).name || ex.exId, set_no: i + 1, kg: +st.kg || 0, reps: +st.reps || 0, rpe: st.rpe == null ? null : +st.rpe, e1rm: Math.round(e1rm(+st.kg || 0, +st.reps || 0)), done_at: st.t ? new Date(st.t).toISOString() : null }))); return rows; }
+/* tablo satırı → yerel kayıt */
+function sbToLocal(t, r){
+  if (t === 'food_entries') return { day: r.day, row: { id: r.id, meal: r.meal || 'kahvalti', t: r.logged_at ? Date.parse(r.logged_at) : 0, name: r.name, grams: r.grams == null ? undefined : +r.grams, kcal: +r.kcal || 0, p: +r.protein || 0, c: +r.carb || 0, f: +r.fat || 0, src: r.src || undefined, thumb: r.thumb || undefined } };
+  if (t === 'weights') return { row: { date: r.day, kg: +r.kg } };
+  return { row: { id: r.id, date: r.day, dayKey: r.day_key || '', dayName: r.name, style: r.style, startedAt: Date.parse(r.started_at), duration: (r.seconds || 0) * 1000, volume: +r.volume || 0, sets: r.sets || 0, prs: r.prs || 0, exercises: r.exercises || [] } };
+}
+const sbHash = r => JSON.stringify(r);
+async function sbAll(t){ let from = 0, out = []; for (;;){ const { data, error } = await sb.from(t).select('*').range(from, from + 999); if (error) throw error; out = out.concat(data || []); if (!data || data.length < 1000) break; from += 1000; } return out; }
+
+/* --- gönder: değişen/yeni satırlar upsert, yerelde silinenler delete --- */
+async function sbPush(){
+  const rows = sbRows(), stats = { up: 0, del: 0 };
+  for (const t of SB_TABLES){
+    const cur = {}; rows[t].forEach(r => { cur[r.id] = sbHash(r); });
+    const ups = rows[t].filter(r => synced[t][r.id] !== cur[r.id]);
+    const dels = Object.keys(synced[t]).filter(id => !cur[id]);
+    for (let i = 0; i < ups.length; i += 200){ const chunk = ups.slice(i, i + 200); const { error } = await sb.from(t).upsert(chunk, { onConflict: 'id' }); if (error) throw error; }
+    if (t === 'workouts' && ups.length){ const ids = ups.map(r => r.id); const d = await sb.from('workout_sets').delete().in('workout_id', ids); if (d.error) throw d.error; const sets = []; S.workouts.filter(w => ids.includes(w.id)).forEach(w => sets.push(...sbSetRows(w))); for (let i = 0; i < sets.length; i += 500){ const { error } = await sb.from('workout_sets').insert(sets.slice(i, i + 500)); if (error) throw error; } }
+    if (dels.length){ if (t === 'workouts'){ const d = await sb.from('workout_sets').delete().in('workout_id', dels); if (d.error) throw d.error; } const { error } = await sb.from(t).delete().in('id', dels); if (error) throw error; }
+    ups.forEach(r => { synced[t][r.id] = cur[r.id]; }); dels.forEach(id => { delete synced[t][id]; });
+    stats.up += ups.length; stats.del += dels.length;
+  }
+  const sh = sbHash(rows.app_state.data);
+  if (synced.app_state !== sh){ const { error } = await sb.from('app_state').upsert({ user_id: sbUser.id, data: rows.app_state.data, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }); if (error) throw error; synced.app_state = sh; stats.up++; }
+  sbSaveSynced(); return stats;
+}
+/* --- çek: sunucu satırları + bu cihazda bekleyenler birleşir --- */
+async function sbPull(){
+  const local = sbRows();
+  for (const t of SB_TABLES){
+    const server = await sbAll(t), srv = {}; server.forEach(r => { srv[r.id] = r; });
+    const loc = {}; local[t].forEach(r => { loc[r.id] = r; });
+    const pending = new Set(local[t].filter(r => synced[t][r.id] !== sbHash(r)).map(r => r.id)); // yerelde değişmiş/yeni
+    const ids = new Set(Object.keys(srv)); pending.forEach(id => ids.add(id));
+    if (t === 'food_entries'){ const foods = {}; ids.forEach(id => { if (pending.has(id)){ const r = loc[id]; (foods[r.day] = foods[r.day] || []).push(S.foods[r.day].find(f => f.id === id)); } else { const c = sbToLocal(t, srv[id]); (foods[c.day] = foods[c.day] || []).push(c.row); } }); Object.keys(foods).forEach(d => foods[d].sort((a, b) => (a.t || 0) - (b.t || 0))); S.foods = foods; }
+    else if (t === 'weights'){ const ws = []; ids.forEach(id => { if (pending.has(id)) ws.push(S.weights.find(w => 'w-' + w.date === id)); else ws.push(sbToLocal(t, srv[id]).row); }); S.weights = ws.filter(Boolean).sort((a, b) => a.date < b.date ? -1 : 1); }
+    else { const ws = []; ids.forEach(id => { if (pending.has(id)) ws.push(S.workouts.find(w => w.id === id)); else ws.push(sbToLocal(t, srv[id]).row); }); S.workouts = ws.filter(Boolean).sort((a, b) => a.startedAt - b.startedAt); }
+    // sunucudan gelenler artık eşit sayılır; bekleyenler push ile gidecek
+    const fresh = {}; sbRows()[t].forEach(r => { if (!pending.has(r.id)) fresh[r.id] = sbHash(r); else if (synced[t][r.id]) fresh[r.id] = synced[t][r.id]; }); synced[t] = fresh;
+  }
+  const { data, error } = await sb.from('app_state').select('data,updated_at').eq('user_id', sbUser.id).maybeSingle(); if (error) throw error;
+  const localHash = sbHash(local.app_state.data), localChanged = !!synced.app_state && synced.app_state !== localHash; // ilk eşitlemede bulut kazanır, sonra bu cihazdaki değişiklik
+  if (data && data.data && !localChanged){
+    const d = data.data, keep = { apiKey: S.profile.apiKey };
+    if (d.profile) S.profile = Object.assign({}, DEFAULT_PROFILE, d.profile, keep); if (d.profileSet != null) S.profileSet = d.profileSet;
+    if (d.program) S.program = d.program; if (d.mealPlan) S.mealPlan = d.mealPlan; if (d.menus) S.menus = d.menus; if (d.mealAlerts) S.mealAlerts = d.mealAlerts;
+    if (d.music){ S.music.ytLists = d.music.ytLists || []; S.music.stations = d.music.stations || []; S.music.shuffle = !!d.music.shuffle; S.music.stream = d.music.stream || ''; }
+    synced.app_state = sbHash(sbRows().app_state.data);
+  }
+  sbSaveSynced();
+}
+async function sbSync(mode){
+  if (!sbOn() || sbBusy) return; sbBusy = true; sbMsg = '';
+  try { if (mode !== 'auto') await sbPull(); const st = await sbPush(); sbLast = Date.now(); sbPending = 0; save(true); if (mode !== 'auto') { render(); if (mode === 'manual') toast('Eşitlendi' + (st.up || st.del ? ` (${st.up} gönderildi, ${st.del} silindi)` : '')); } }
+  catch (e) { const m = (e && (e.message || e.code)) || String(e); sbMsg = 'Eşitleme hatası: ' + m + (/relation .* does not exist|schema cache|PGRST205/i.test(m) ? ' — tablolar kurulu değil: supabase.sql dosyasını SQL Editor\'de çalıştır.' : /JWT|401|403|row-level/i.test(m) ? ' — oturum düşmüş olabilir, yeniden giriş yap.' : ''); sbPending = 1; if (typeof current !== 'undefined' && current === 'ayarlar') renderSettings(); }
+  sbBusy = false;
+}
+function sbTouch(){ if (!sbOn()) return; sbPending = 1; clearTimeout(sbTimer); sbTimer = setTimeout(() => sbSync('auto'), 2000); }
+function sbCountPending(){ if (!sbOn()) return 0; try { const rows = sbRows(); let n = 0; SB_TABLES.forEach(t => { const cur = {}; rows[t].forEach(r => { cur[r.id] = 1; if (synced[t][r.id] !== sbHash(r)) n++; }); Object.keys(synced[t]).forEach(id => { if (!cur[id]) n++; }); }); if (synced.app_state !== sbHash(rows.app_state.data)) n++; return n; } catch (e) { return 0; } }
+
+/* --- Ayarlar kartı --- */
+function sbCard(){
+  if (!sbCanRun()) return '';
+  let h = `<div class="card"><div class="row between nowrap"><h3>Supabase · bulut ve SQL</h3><span class="chip${sbOn() ? ' on' : ''}">${sbOn() ? 'bağlı' : sbState === 'ready' ? 'giriş bekliyor' : sbState === 'loading' ? 'yükleniyor' : sbState === 'error' ? 'hata' : 'kapalı'}</span></div>`;
+  h += `<p class="hint">Veriler kendi Supabase projendeki PostgreSQL tablolarına yazılır: cihazlar arası eşitlenir, SQL ile sorgularsın. Bu cihazdaki yerel kopya çevrimdışı da çalışır; internet gelince gönderilir.</p>`;
+  if (!sb || sbState !== 'ready'){
+    h += `<ol class="hint" style="padding-left:18px;display:grid;gap:4px"><li>supabase.com'da ücretsiz proje aç.</li><li>SQL Editor'de <a href="supabase.sql" download>supabase.sql</a> dosyasını çalıştır (tablolar, güvenlik, görünümler).</li><li>Project Settings → API: <b>Project URL</b> ve <b>anon public</b> anahtarını buraya gir.</li><li>Authentication → Providers → Email: "Confirm email" kapalıysa kayıt anında giriş yapılır.</li></ol>`;
+    h += `<div class="field"><span class="label">Project URL</span><input id="sbUrl" class="input" type="url" autocomplete="off" value="${esc(sbCfg.url)}" placeholder="https://xxxx.supabase.co"></div><div class="field"><span class="label">anon public key</span><input id="sbKey" class="input" type="password" autocomplete="off" value="${esc(sbCfg.key)}" placeholder="eyJ…"></div>`;
+    if (sbMsg) h += `<p class="hint bad">${esc(sbMsg)}</p>`;
+    h += `<div class="row"><button class="btn btn-primary" data-action="sbConnect">${sbState === 'loading' ? 'Bağlanıyor…' : 'Bağlan'}</button>${sbCfg.url ? `<button class="btn" data-action="sbDisconnect">Bağlantıyı kaldır</button>` : ''}</div>`;
+    return h + `</div>`;
+  }
+  if (!sbUser){
+    h += `<p class="small muted ellipsis">${esc(sbCfg.url)}</p><div class="field"><span class="label">E-posta</span><input id="sbEmail" class="input" type="email" autocomplete="email" value="${esc(sbCfg.email)}" placeholder="sen@ornek.com"></div><div class="field"><span class="label">Şifre</span><input id="sbPass" class="input" type="password" autocomplete="current-password" placeholder="en az 6 karakter"></div>`;
+    if (sbMsg) h += `<p class="hint bad">${esc(sbMsg)}</p>`;
+    h += `<div class="row"><button class="btn btn-primary" data-action="sbLogin" ${sbAuthBusy ? 'disabled' : ''}>${sbAuthBusy ? 'Bekle…' : 'Giriş yap'}</button><button class="btn" data-action="sbSignup" ${sbAuthBusy ? 'disabled' : ''}>Kayıt ol</button><button class="btn" data-action="sbDisconnect">Bağlantıyı kaldır</button></div>`;
+    return h + `</div>`;
+  }
+  const pend = sbCountPending();
+  h += `<div class="kv"><b>Hesap</b><span class="ellipsis">${esc(sbUser.email || sbUser.id)}</span><b>Son eşitleme</b><span>${sbLast ? new Date(sbLast).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—'}</span><b>Bekleyen</b><span>${pend ? pend + ' değişiklik' : 'yok'}</span><b>Kayıt</b><span>${Object.values(S.foods).reduce((a, l) => a + l.length, 0)} besin · ${S.workouts.length} antrenman · ${S.weights.length} kilo</span></div>`;
+  if (sbMsg) h += `<p class="hint bad">${esc(sbMsg)}</p>`;
+  h += `<div class="row"><button class="btn btn-primary" data-action="sbSyncNow" ${sbBusy ? 'disabled' : ''}>${sbBusy ? 'Eşitleniyor…' : 'Şimdi eşitle'}</button><button class="btn" data-action="sbLogout">Çıkış</button></div>`;
+  h += `<p class="hint">SQL'den bakmak için: <code>daily_nutrition</code>, <code>exercise_progress</code>, <code>weekly_volume</code> görünümleri ve <code>food_entries</code>, <code>workouts</code>, <code>workout_sets</code>, <code>weights</code> tabloları (supabase.sql). JSON geri yükleme buluta da yazılır; "Tüm verileri sil" yalnızca bu cihazı temizler.</p>`;
+  return h + `</div>`;
+}
+function sbAction(a){
+  switch (a){
+    case 'sbConnect': sbConnect(($('#sbUrl') || {}).value, ($('#sbKey') || {}).value); return true;
+    case 'sbDisconnect': sbDisconnect(); renderSettings(); toast('Supabase bağlantısı kaldırıldı'); return true;
+    case 'sbLogin': sbSignIn(($('#sbEmail') || {}).value, ($('#sbPass') || {}).value, false); return true;
+    case 'sbSignup': sbSignIn(($('#sbEmail') || {}).value, ($('#sbPass') || {}).value, true); return true;
+    case 'sbLogout': sbSignOut(); return true;
+    case 'sbSyncNow': sbSync('manual'); return true;
+  }
+  return false;
+}
 /* ===== UYGULAMA ===== */
 const KEY = 'demir-defteri-v1';
 const VIEWS = ['bugun','beslenme','program','antrenman','gecmis','ayarlar'];
@@ -1330,7 +1496,7 @@ function normalize(d){
   return d;
 }
 function load(){ try { const raw = localStorage.getItem(KEY); if (raw){ const d = normalize(JSON.parse(raw)); if (d) return d; } } catch (e) { storageOK = false; } return fresh(); }
-function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); storageOK = true; } catch (e) { storageOK = false; } }
+function save(quiet){ try { localStorage.setItem(KEY, JSON.stringify(S)); storageOK = true; } catch (e) { storageOK = false; } if (!quiet) sbTouch(); }
 let S = load();
 
 /* --- UI durumu --- */
@@ -2030,6 +2196,7 @@ function renderSettings(){
   h += `<div class="card"><h3>Öğün planı ve saatler</h3><p class="hint">Hedef kalori öğünlere yüzdeyle dağıtılır; saatler "sırada" işaretini ve sayfa açıkken öğün uyarısını belirler.</p><div class="list">${S.mealPlan.map((m, i) => `<div class="item"><span style="width:64px;font-weight:600;flex:none">${MEALS[m.key]}</span><input class="input" type="time" value="${m.time}" data-plan="${i}" data-k="time" style="width:112px;flex:none" aria-label="${MEALS[m.key]} saati"><input class="input" type="number" inputmode="numeric" min="0" max="100" value="${m.pct}" data-plan="${i}" data-k="pct" style="width:68px;flex:none;text-align:right" aria-label="${MEALS[m.key]} yüzdesi"><span class="small muted">%</span><span class="small muted grow right">~${mealTargets()[i].kcal} kcal</span></div>`).join('')}</div><label class="row" style="gap:6px"><input id="pMealAlert" type="checkbox" ${p.mealAlert ? 'checked' : ''}> Sayfa açıkken öğün saatinde uyar (ses + bildirim)</label><div class="row"><button class="btn btn-primary" data-action="savePlan">${ICON.check} Planı kaydet</button><button class="btn btn-ghost" data-action="resetPlan">Varsayılana dön</button></div><p class="hint">Sayfa kapalıyken web sayfası alarm çalamaz; gerçek alarm için aynı saatleri telefonunun Hatırlatıcılar uygulamasına ekle.</p></div>`;
   h += `<div class="card"><h3>Hesaplanan hedefler</h3><div class="kv"><b>Bazal metabolizma</b><span>${fmtK(tg.bmr)} kcal (Mifflin-St Jeor)</span><b>Günlük harcama</b><span>${fmtK(tg.tdee)} kcal</span><b>Hedef</b><span>${fmtK(tg.kcal)} kcal${p.kcalOverride ? ' (elle)' : ' (' + GOAL_LABEL[p.goal] + ')'}</span><b>Protein</b><span>${tg.prot} g (${p.goal === 'cut' ? '2,2' : '1,8'} g/kg)</span><b>Karbonhidrat</b><span>${tg.carb} g</span><b>Yağ</b><span>${tg.fat} g (%25)</span></div></div>`;
   h += `<div class="card"><h3>Yedek (JSON)</h3><p class="hint">Veriler bu tarayıcıda, yerel depolamada tutulur. Telefon veya tarayıcı değişince JSON ile taşırsın.${S.lastExport ? ' Son yedek: ' + new Date(S.lastExport).toLocaleString('tr-TR') : ' Henüz yedek alınmadı.'}</p><div class="row"><button class="btn btn-primary" data-action="exportJson">${ICON.down} JSON indir</button><button class="btn" data-action="copyJson">Kopyala</button></div>${exportText ? `<textarea id="expText" class="input pre" readonly style="min-height:110px">${esc(exportText)}</textarea><p class="hint">İndirme bu görünümde çalışmıyorsa metni seçip bir .json dosyasına yapıştır.</p>` : ''}<hr class="sep"><p class="label">Geri yükle</p><input id="impFile" class="input" type="file" accept=".json,application/json"><textarea id="impText" class="input pre" placeholder="…veya JSON metnini buraya yapıştır" style="min-height:70px"></textarea><button class="btn" data-action="importText">${ICON.up} Metinden yükle</button>${pendingImport ? `<div class="confirm"><span>Yedek bulundu: ${pendingImport.workouts.length} antrenman, ${Object.keys(pendingImport.foods).length} gün beslenme, ${pendingImport.weights.length} kilo kaydı. <b>Mevcut veriler üzerine yazılacak.</b></span><div class="row nowrap"><button class="btn btn-danger btn-sm" data-action="importConfirm">Evet, geri yükle</button><button class="btn btn-sm" data-action="cancelImport">Vazgeç</button></div></div>` : ''}</div>`;
+  h += sbCard();
   if (!inClaudeApp()) h += `<div class="card"><h3>Claude API anahtarı</h3><p class="hint">Bu sayfa claude.ai dışında çalışıyor. Yapay zeka özellikleri (metin ve fotoğraftan kalori, menü önerisi, koç yorumu) için kendi Anthropic API anahtarını gir. Anahtar yalnızca bu tarayıcının yerel depolamasında kalır, JSON yedeğe yazılmaz; ortak bilgisayarda girme. Kullanım ücreti Anthropic hesabından düşer.</p><div class="field"><span class="label">API anahtarı</span><input id="pApiKey" class="input" type="password" autocomplete="off" value="${esc(p.apiKey || '')}" placeholder="sk-ant-…"></div><div class="grid2"><div class="field"><span class="label">Hızlı model (metin)</span><input id="pApiQuick" class="input" value="${esc(p.apiModelQuick || '')}"></div><div class="field"><span class="label">Model (fotoğraf, menü)</span><input id="pApiModel" class="input" value="${esc(p.apiModel || '')}"></div></div><div class="row"><button class="btn btn-primary" data-action="saveApi">${ICON.check} Kaydet ve bağlan</button>${p.apiKey ? `<button class="btn btn-ghost" data-action="clearApi">Anahtarı sil</button>` : ''}</div></div>`;
   h += `<div class="card"><h3>Claude</h3><p class="hint">${aiState === 'ready' ? 'Bağlı. Beslenme sekmesinde yazdığın öğünleri (ve ' + (aiImages ? 'çektiğin fotoğrafları' : 'metinleri') + ') Claude gramlara, kaloriye ve makrolara böler, günlük menü önerir; antrenman sonunda koç yorumu verir. Her istek senin Claude kullanımından düşer; ilk kullanımda izin sorulur.' : aiState === 'none' ? (inClaudeApp() ? 'Bu görünümde Claude bağlantısı yok. Sayfayı claude.ai içinden açtığında bağlanır.' : 'Bağlı değil: claude.ai dışında yapay zeka için yukarıya API anahtarı gir. Besin listesi, elle giriş, program ve antrenman modu anahtarsız da çalışır.') : 'Bağlantı kontrol ediliyor…'}</p></div>`;
   h += `<div class="card"><h3>Tehlikeli bölge</h3>${confirmKey === 'wipe' ? `<div class="confirm"><span>Tüm profil, beslenme ve antrenman kayıtları silinecek. Önce yedek aldın mı?</span><div class="row nowrap"><button class="btn btn-danger btn-sm" data-action="wipeYes">Evet, hepsini sil</button><button class="btn btn-sm" data-action="cancelConfirm">Vazgeç</button></div></div>` : `<button class="btn btn-danger" data-action="wipe">Tüm verileri sil</button>`}</div>`;
@@ -2078,6 +2245,7 @@ document.addEventListener('click', ev => {
   const el = ev.target.closest('[data-action]'); if (!el) return;
   const a = el.dataset.action, d = el.dataset, ses = S.session;
   const num = (k) => +d[k];
+  if (a.startsWith('sb') && sbAction(a)) return;
   switch (a){
     case 'closeSheet': closeSheet(); break;
     case 'cancelConfirm': confirmKey = null; render(); break;
@@ -2160,7 +2328,7 @@ document.addEventListener('click', ev => {
     case 'saveApi': { S.profile.apiKey = (($('#pApiKey') || {}).value || '').trim(); S.profile.apiModelQuick = (($('#pApiQuick') || {}).value || '').trim() || 'claude-haiku-5-5'; S.profile.apiModel = (($('#pApiModel') || {}).value || '').trim() || 'claude-sonnet-5-5'; save(); aiState = 'wait'; renderAiBadge(); initCaps().then(() => { renderSettings(); toast(S.profile.apiKey ? 'API anahtarı kaydedildi' : 'Anahtar boş'); }); break; }
     case 'clearApi': S.profile.apiKey = ''; save(); initCaps().then(() => { renderSettings(); toast('Anahtar silindi'); }); break;
     case 'wipe': confirmKey = 'wipe'; renderSettings(); break;
-    case 'wipeYes': S = fresh(); confirmKey = null; pendingItems = null; exportText = ''; save(); toast('Tüm veriler silindi'); go('bugun'); break;
+    case 'wipeYes': if (sbOn()) sbSignOut(true); S = fresh(); confirmKey = null; pendingItems = null; exportText = ''; save(); toast('Bu cihazdaki veriler silindi'); go('bugun'); break;
   }
 });
 document.addEventListener('input', ev => {
@@ -2183,7 +2351,7 @@ document.addEventListener('change', ev => {
 });
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('#sheet').hidden) closeSheet(); if (ev.key === 'Enter' && ev.target && ev.target.id === 'radioQ'){ ev.preventDefault(); radio.q = ev.target.value.trim().slice(0, 60); radioLoad(); } });
 document.addEventListener('error', ev => { const t = ev.target; if (t && t.tagName === 'IMG' && t.classList.contains('fav')){ const span = document.createElement('span'); span.className = 'fav row center'; span.style.justifyContent = 'center'; span.innerHTML = ICON.radio; t.replaceWith(span); } }, true);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; checkMealAlerts(); if (S.session){ if (current === 'antrenman') renderSession(); startTick(); requestWake(); } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; checkMealAlerts(); if (sbOn() && Date.now() - sbLast > 60000) sbSync('pull'); if (S.session){ if (current === 'antrenman') renderSession(); startTick(); requestWake(); } });
 window.addEventListener('hashchange', route);
 
 /* ===== BAŞLAT ===== */
@@ -2192,6 +2360,8 @@ route();
 if (S.session){ startTick(); }
 initCaps();
 loadClips();
+sbBoot();
+window.addEventListener('online', () => { if (sbOn()) sbSync('auto'); });
 setInterval(checkMealAlerts, 30000);
 setTimeout(checkMealAlerts, 1500);
 </script>
