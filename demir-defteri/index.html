@@ -233,6 +233,7 @@ video.anim{object-fit:cover;background:#000}
 .fav svg{width:16px;height:16px;margin:auto}
 .star{color:var(--fg-3)}.star.on{color:var(--accent)}.star.on svg{fill:currentColor}
 .chip.on{background:var(--accent);color:#1a1400}
+.chip.own{border:1px solid var(--accent)}
 h4{font-family:var(--font-display);font-weight:700;letter-spacing:.01em}
 body.has-mini .app{padding-bottom:calc(156px + env(safe-area-inset-bottom,0px))}
 body.has-mini .toast{bottom:calc(160px + env(safe-area-inset-bottom,0px))}
@@ -1309,7 +1310,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 
 /* --- Depolama --- */
 let storageOK = true;
-function fresh(){ const p = Object.assign({}, DEFAULT_PROFILE); return { version:1, profile:p, profileSet:false, music:{ tracks:[], shuffle:false, stream:'', stations:[] }, program: buildProgram(p.style, p.days, p.equip, p.split), mealPlan: DEFAULT_PLAN.map(m => Object.assign({}, m)), foods:{}, menus:{}, mealAlerts:{ date:'', keys:[] }, weights:[], workouts:[], session:null, lastExport:null }; }
+function fresh(){ const p = Object.assign({}, DEFAULT_PROFILE); return { version:1, profile:p, profileSet:false, music:{ tracks:[], shuffle:false, stream:'', stations:[], ytLists:[] }, program: buildProgram(p.style, p.days, p.equip, p.split), mealPlan: DEFAULT_PLAN.map(m => Object.assign({}, m)), foods:{}, menus:{}, mealAlerts:{ date:'', keys:[] }, weights:[], workouts:[], session:null, lastExport:null }; }
 function normalize(d){
   if (!d || d.version !== 1 || !d.profile) return null;
   d.profile = Object.assign({}, DEFAULT_PROFILE, d.profile);
@@ -1324,6 +1325,8 @@ function normalize(d){
   d.menus = d.menus || {}; d.mealAlerts = d.mealAlerts || { date:'', keys:[] };
   d.music = d.music && Array.isArray(d.music.tracks) ? d.music : { tracks:[], shuffle:false, stream:'' };
   d.music.stations = Array.isArray(d.music.stations) ? d.music.stations : [];
+  d.music.ytLists = Array.isArray(d.music.ytLists) ? d.music.ytLists : [];
+  if (d.profile && d.profile.musicUrl && !d.music.ytLists.length){ const id = ytListId(d.profile.musicUrl); if (id) d.music.ytLists.push({ name:'Kendi listem', list:id }); d.profile.musicUrl = ''; }
   return d;
 }
 function load(){ try { const raw = localStorage.getItem(KEY); if (raw){ const d = normalize(JSON.parse(raw)); if (d) return d; } } catch (e) { storageOK = false; } return fresh(); }
@@ -1816,7 +1819,7 @@ function playRadio(st){
   render(); updateMini();
 }
 function radioStep(dir){ const list = radioList(); if (!list.length) return; const i = list.findIndex(x => 'radio:' + x.uuid === mq.trackId); playRadio(list[(i + dir + list.length) % list.length]); }
-const ytListId = u => { const m = String(u || '').match(/[?&]list=([A-Za-z0-9_-]{10,})/); return m ? m[1] : (/^[A-Za-z0-9_-]{10,}$/.test(String(u || '').trim()) ? String(u).trim() : ''); };
+function ytListId(u){ const m = String(u || '').match(/[?&]list=([A-Za-z0-9_-]{10,})/); return m ? m[1] : (/^[A-Za-z0-9_-]{10,}$/.test(String(u || '').trim()) ? String(u).trim() : ''); }
 function radioSection(){
   const list = radioList(), favIds = new Set(S.music.stations.map(f => f.uuid));
   let h = `<div class="stack-sm"><div class="row between nowrap"><h4 class="row" style="gap:6px;font-size:15px">${ICON.radio} Canlı radyo</h4><span class="small muted">ekran kapalıyken de çalar</span></div>`;
@@ -1829,13 +1832,13 @@ function radioSection(){
   return h + `</div>`;
 }
 function ytSection(){
-  const own = ytListId(S.profile.musicUrl), lists = MUSIC.map(m => ({ name: m.name, list: m.list })); if (own) lists.unshift({ name: 'Kendi listem', list: own });
   if (inClaudeApp()) return '';
+  const own = S.music.ytLists, lists = own.map(m => Object.assign({ own:true }, m)).concat(MUSIC.map(m => ({ name: m.name, list: m.list })));
   let h = `<div class="stack-sm"><div class="row between nowrap"><h4 style="font-size:15px">YouTube listeleri</h4><span class="small muted">sayfanın içinde oynar</span></div>`;
-  h += `<div class="chips">${lists.map(m => `<button class="chip${ytOpen === m.list ? ' on' : ''}" data-action="ytEmbed" data-list="${esc(m.list)}">${esc(m.name)}</button>`).join('')}</div>`;
-  if (ytOpen) h += `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(ytOpen)}&rel=0&playsinline=1" title="YouTube listesi" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div><button class="btn btn-sm" data-action="ytClose">Listeyi kapat</button>`;
+  h += `<div class="chips">${lists.map(m => `<button class="chip${ytOpen === m.list ? ' on' : ''}${m.own ? ' own' : ''}" data-action="ytEmbed" data-list="${esc(m.list)}">${m.own ? '★ ' : ''}${esc(m.name)}</button>`).join('')}</div>`;
+  if (ytOpen){ const cur = own.find(m => m.list === ytOpen); h += `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(ytOpen)}&rel=0&playsinline=1" title="YouTube listesi" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div><div class="row nowrap"><button class="btn btn-sm" data-action="ytClose">Listeyi kapat</button>${cur ? `<button class="btn btn-sm" data-action="ytDel" data-list="${esc(cur.list)}">${ICON.x} Listemi sil</button>` : ''}</div>`; }
+  h += `<div class="stack-sm" style="padding:10px;border:1px dashed var(--line);border-radius:var(--r-sm)"><p class="label">Kendi listeni ekle</p><div class="row nowrap"><input id="ytName" class="input" style="flex:0 1 38%" type="text" maxlength="30" placeholder="Ad (ör. Bacak günü)"><input id="ytLink" class="input grow" type="url" placeholder="YouTube / YouTube Music liste linki"><button class="btn btn-primary" data-action="ytAdd">Ekle</button></div><p class="hint">YouTube Music'te listeyi aç → Paylaş → linki kopyala, buraya yapıştır. Liste "herkese açık" ya da "liste dışı" olmalı; "gizli" liste oynamaz.</p></div>`;
   h += `<p class="hint">YouTube, ekran kapanınca ya da uygulamadan çıkınca sesi durdurur (arka planda çalma YouTube Premium özelliği; gömülü oynatıcıda da böyle). Ekran kapalı dinlemek için radyo ya da kendi dosyaların.</p>`;
-  h += `<details><summary class="small muted" style="padding:6px 0">Kendi YouTube listeni ekle</summary><div class="row nowrap" style="margin-top:6px"><input id="musicIn" class="input grow" type="url" placeholder="https://music.youtube.com/playlist?list=…" value="${esc(S.profile.musicUrl || '')}"><button class="btn" data-action="saveMusic">Kaydet</button></div><p class="hint">YouTube Music'te listeyi aç → Paylaş → linki kopyala, buraya yapıştır. Liste "herkese açık" ya da "liste dışı" olmalı.</p></details>`;
   return h + `</div>`;
 }
 function musicCard(open){
@@ -2077,13 +2080,14 @@ document.addEventListener('click', ev => {
     case 'radioFav': { const i = S.music.stations.findIndex(x => x.uuid === d.id); if (i >= 0) S.music.stations.splice(i, 1); else { const st = radio.results.find(x => x.uuid === d.id); if (st) S.music.stations.unshift(st); } save(); render(); break; }
     case 'ytEmbed': ytOpen = ytOpen === d.list ? '' : d.list; render(); break;
     case 'ytClose': ytOpen = ''; render(); break;
+    case 'ytAdd': { const link = (($('#ytLink') || {}).value || '').trim(), id = ytListId(link); if (!id) return toast('Liste linki tanınmadı; "list=" içeren YouTube linki yapıştır.'); if (S.music.ytLists.some(m => m.list === id)) return toast('Bu liste zaten ekli'); const name = ((($('#ytName') || {}).value || '').trim() || 'Listem ' + (S.music.ytLists.length + 1)).slice(0, 30); S.music.ytLists.push({ name, list: id }); ytOpen = id; save(); render(); toast('Liste eklendi: ' + name); break; }
+    case 'ytDel': { S.music.ytLists = S.music.ytLists.filter(m => m.list !== d.list); if (ytOpen === d.list) ytOpen = ''; save(); render(); break; }
     case 'dlHtml': { if (!DL) return; el.disabled = true; fetch('demir-defteri.html').then(r => { if (!r.ok) throw 0; return r.text(); }).then(t => DL.save({ filename: 'demir-defteri.html', data: t })).then(() => toast('Kaydedildi: demir-defteri.html')).catch(e => { if (!(e && e.code === 'declined')) toast('İndirme yapılamadı; sohbetteki HTML dosyasını kullan.'); }).finally(() => { el.disabled = false; }); break; }
     case 'musicNext': playNext(false); break;
     case 'musicPrev': playPrev(); break;
     case 'musicShuffle': S.music.shuffle = !S.music.shuffle; save(); buildQueue(mq.trackId); render(); break;
     case 'musicDel': { S.music.tracks = S.music.tracks.filter(t => t.id !== d.id); mdbDel(d.id).catch(() => {}); if (mq.trackId === d.id && audioEl){ audioEl.pause(); mq.trackId = null; mq.name = ''; updateMini(); } mq.queue = mq.queue.filter(x => x !== d.id); save(); render(); break; }
     case 'streamPlay': { const u = (($('#streamIn') || {}).value || '').trim(); if (!/^https?:\/\//i.test(u)) return toast('Tam yayın adresi gir (https://…).'); S.music.stream = u.slice(0, 300); save(); playStream(u); break; }
-    case 'saveMusic': { const u = (($('#musicIn') || {}).value || '').trim(); if (u && !/^https?:\/\//i.test(u)) return toast('Tam link gir (https://…).'); S.profile.musicUrl = u.slice(0, 300); save(); render(); toast(u ? 'Liste kaydedildi' : 'Liste kaldırıldı'); break; }
     case 'playVideo': { const box = el.closest('.video'); if (box) box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(d.v)}?autoplay=1&rel=0&playsinline=1" title="Hareket videosu" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`; break; }
     case 'warmDone': ses.warm = true; save(); renderSession(); window.scrollTo(0, 0); break;
     case 'kgStep': { const i = $('#inKg'); if (i) i.value = Math.max(0, (parseFloat(i.value) || 0) + num('d')); break; }
